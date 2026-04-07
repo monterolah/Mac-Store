@@ -1,10 +1,12 @@
 const { v4: uuidv4 } = require('uuid');
 const cloudinary = require('cloudinary').v2;
 
+const clean = v => v ? String(v).trim().replace(/^=+/, '') : v;
+
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+  cloud_name: clean(process.env.CLOUDINARY_CLOUD_NAME),
+  api_key:    clean(process.env.CLOUDINARY_API_KEY),
+  api_secret: clean(process.env.CLOUDINARY_API_SECRET),
 });
 
 /**
