@@ -23,12 +23,7 @@ ssl/
 public/uploads/*
 !public/uploads/.gitkeep
 
-# ── JS y CSS compilados/ofuscados (se regeneran con npm run obfuscate / minify-css) ──
-public/js/macstore.js
-public/js/quotation.js
-public/js/admin.js
-public/js/protect.js
-public/css/macstore.css
+# JS y CSS compilados — se incluyen en el repo para deploy
 
 # ── Logs ─────────────────────────────────────────
 *.log
