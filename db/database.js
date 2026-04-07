@@ -11,8 +11,8 @@ async function initializeDB() {
     throw new Error('No se puede conectar a Firestore: ' + e.message);
   }
 
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@macstore.com';
-  const adminPass = process.env.ADMIN_PASSWORD || 'Admin123!';
+  const adminEmail = (process.env.ADMIN_EMAIL || 'admin@macstore.com').trim().replace(/^[^a-zA-Z0-9]+/, '');
+  const adminPass = (process.env.ADMIN_PASSWORD || 'Admin123!').trim();
 
   if (isProd && (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD)) {
     throw new Error('En producción debes definir ADMIN_EMAIL y ADMIN_PASSWORD');
