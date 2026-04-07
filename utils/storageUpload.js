@@ -1,13 +1,17 @@
-const { v4: uuidv4 } = require('uuid');
 const cloudinary = require('cloudinary').v2;
 
-const clean = v => v ? String(v).trim().replace(/^=+/, '') : v;
+const clean = v => v ? String(v).trim().replace(/^=+/, '') : '';
 
-cloudinary.config({
-  cloud_name: clean(process.env.CLOUDINARY_CLOUD_NAME),
-  api_key:    clean(process.env.CLOUDINARY_API_KEY),
-  api_secret: clean(process.env.CLOUDINARY_API_SECRET),
-});
+// Soporte para CLOUDINARY_URL o variables individuales
+if (process.env.CLOUDINARY_URL) {
+  cloudinary.config({ cloudinary_url: clean(process.env.CLOUDINARY_URL) });
+} else {
+  cloudinary.config({
+    cloud_name: clean(process.env.CLOUDINARY_CLOUD_NAME),
+    api_key:    clean(process.env.CLOUDINARY_API_KEY),
+    api_secret: clean(process.env.CLOUDINARY_API_SECRET),
+  });
+}
 
 /**
  * Sube un archivo a Cloudinary y devuelve su URL pública.
