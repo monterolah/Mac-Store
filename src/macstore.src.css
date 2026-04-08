@@ -238,15 +238,16 @@ button{font-family:var(--font);cursor:pointer}
   gap:22px;
 }
 .ms-card{
-  background:#fff;border-radius:14px;overflow:hidden;
+  background:#fff;border-radius:18px;overflow:hidden;
   display:flex;flex-direction:column;
   text-decoration:none;color:inherit;
-  transition:transform .3s var(--ease),box-shadow .3s var(--ease);
-  border:1px solid #e8e8ed;
+  transition:transform .35s var(--ease),box-shadow .35s var(--ease);
+  border:1px solid rgba(0,0,0,.07);
+  box-shadow:0 2px 8px rgba(0,0,0,.05);
 }
 .ms-card:hover{
-  box-shadow:0 10px 36px rgba(0,0,0,.13);
-  transform:translateY(-4px);
+  box-shadow:0 16px 48px rgba(0,0,0,.14);
+  transform:translateY(-6px);
 }
 .ms-card-img{
   height:280px;
@@ -486,27 +487,118 @@ footer{background:var(--g1);border-top:1px solid var(--g2);padding:40px 0 20px}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .img-preview-box{width:100%;aspect-ratio:1;object-fit:contain;border-radius:10px;background:#f5f5f7;padding:14px;margin-bottom:10px}
 
-/* ── RESPONSIVE ── */
+/* ── RESPONSIVE TABLET ── */
+@media(max-width:900px){
+  .ms-catalog-grid{grid-template-columns:repeat(auto-fill,minmax(min(200px,45%),1fr));gap:16px}
+  .ms-card-img{height:240px}
+  .footer-grid{grid-template-columns:1fr 1fr;gap:24px}
+  .detail-wrap{padding:36px 16px}
+  .detail-grid{gap:36px}
+}
+
+/* ── RESPONSIVE MÓVIL ── */
 @media(max-width:768px){
+  /* Nav */
   .nav-links,.nav-search-btn{display:none}
   .hamburger{display:block}
-  .detail-grid{grid-template-columns:1fr;gap:24px}
+  .nav-inner{padding:0 16px}
+  .nav-logo img{height:30px}
+
+  /* Hero */
+  .ms-hero-wrap{height:100svh}
+  .ms-hero-content{padding:0 20px}
+  .ms-hero-btns{gap:10px}
+  .ms-btn-primary,.ms-btn-ghost,.ms-btn-outline{padding:11px 20px;font-size:15px}
+
+  /* Catalog */
+  .ms-catalog-section{padding:56px 16px}
+  .ms-catalog-grid{grid-template-columns:repeat(2,1fr);gap:12px}
+  .ms-card-img{height:200px;padding:10px}
+  .ms-card-body{padding:11px 13px 14px}
+  .ms-card-name{font-size:13px}
+  .ms-card-price{font-size:15px}
+  .ms-section-head{margin-bottom:32px}
+  .ms-section-head h2{font-size:clamp(22px,5vw,36px)}
+
+  /* Showcase */
+  .ms-showcase{min-height:auto;padding:52px 20px}
+  .ms-showcase-horiz{grid-template-columns:1fr;gap:28px;text-align:center}
+  .ms-showcase-reverse{direction:ltr}
+  .ms-showcase-text{align-items:center}
+  .ms-showcase-btns{justify-content:center}
+  .ms-showcase-title{font-size:clamp(28px,7vw,44px)}
+  .ms-showcase-desc{font-size:15px}
+
+  /* Auth */
+  .ms-auth-section{padding:44px 16px}
+  .ms-auth-inner{flex-direction:column;text-align:center;gap:18px}
+
+  /* Support */
+  .ms-support-grid{grid-template-columns:1fr;gap:12px}
+  .ms-support-card{padding:24px 20px;border-radius:16px}
+
+  /* Footer */
+  .footer-grid{grid-template-columns:1fr 1fr;gap:20px}
+  .footer-bottom{flex-direction:column;align-items:flex-start;gap:8px}
+
+  /* Product detail */
+  .detail-wrap{padding:28px 16px 60px}
+  .detail-grid{grid-template-columns:1fr;gap:20px}
+  .detail-img-box{padding:24px;max-height:280px}
+  .detail-img-box img{max-height:220px}
+  .detail-h1{font-size:clamp(24px,5vw,32px)}
+  .detail-ctas{flex-direction:column}
+  .detail-ctas .ms-btn-primary,.detail-ctas .ms-btn-ghost,.detail-ctas .ms-btn-outline{width:100%;justify-content:center}
   .specs-grid{grid-template-columns:1fr}
-  .footer-grid{grid-template-columns:1fr 1fr}
+
+  /* Catalog/category page */
+  .cat-page,.catalog-page{padding:36px 16px 60px}
+  .cat-header{margin-bottom:24px}
+
+  /* WhatsApp FAB */
+  .whatsapp-fab{bottom:16px;right:16px;width:48px;height:48px}
+
+  /* Admin */
   .adm-stats{grid-template-columns:1fr 1fr}
   .adm-form-layout{grid-template-columns:1fr}
   .adm-settings-grid{grid-template-columns:1fr}
   .banner-grid{grid-template-columns:1fr}
   .pgrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
-  .adm-main{padding:18px}
+  .adm-main{padding:16px}
   .adm-tabs{display:none}
-  .ms-showcase{min-height:auto;padding:60px 24px}
-  .ms-showcase-horiz{grid-template-columns:1fr;gap:32px;text-align:center}
-  .ms-showcase-reverse{direction:ltr}
-  .ms-showcase-text{align-items:center}
-  .ms-showcase-btns{justify-content:center}
-  .ms-auth-inner{flex-direction:column;text-align:center}
-  .ms-hero-wrap{height:100svh}
+  .adm-side{display:none}
+}
+
+/* ── RESPONSIVE MÓVIL PEQUEÑO ── */
+@media(max-width:480px){
+  /* Cards en 1 columna en pantallas muy pequeñas */
+  .ms-catalog-grid{grid-template-columns:1fr;gap:14px}
+  .ms-card-img{height:220px}
+  .ms-card-body{padding:12px 14px 16px}
+  .ms-card-name{font-size:14px}
+
+  /* Hero más compacto */
+  .ms-hero-content{padding:0 16px}
+  .ms-hero-title{font-size:clamp(38px,10vw,64px)}
+  .ms-hero-btns{flex-direction:column;align-items:center}
+  .ms-btn-primary,.ms-btn-ghost,.ms-btn-outline{width:100%;max-width:280px;justify-content:center}
+
+  /* Footer 1 columna */
+  .footer-grid{grid-template-columns:1fr}
+
+  /* Showcase */
+  .ms-showcase{padding:44px 16px}
+
+  /* Auth section */
+  .ms-auth-inner h2{font-size:19px}
+
+  /* Product detail */
+  .detail-img-box{padding:16px}
+  .breadcrumb{font-size:12px}
+
+  /* Admin: ocultar sidebar completamente */
+  .adm-stats{grid-template-columns:1fr}
+  .adm-f-row{grid-template-columns:1fr}
 }
 
 /* ── COLOR SWATCHES EN CARDS ── */
