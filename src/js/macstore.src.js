@@ -213,3 +213,18 @@ function cardSwatchClick(el, ev) {
     }, 160);
   }
 }
+
+// ── AUTO-REFRESH (polling) ────────────────────────────────────────────────
+(function(){
+  let currentV = null;
+  async function checkV(){
+    try {
+      const r = await fetch('/api/site-version');
+      const d = await r.json();
+      if(currentV === null){ currentV = d.version; return; }
+      if(d.version !== currentV) location.reload();
+    } catch(e){}
+  }
+  checkV();
+  setInterval(checkV, 20000);
+})();

@@ -2,9 +2,24 @@
 <div class="adm-ph">
   <div><h1>Dashboard</h1><p>Bienvenido, <%=admin.name%>. Tu tienda está activa.</p></div>
   <div class="adm-ph-r">
+    <button onclick="bumpVersion()" class="adm-btn-s" id="bumpBtn" title="Recarga la tienda en todos los dispositivos conectados">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Actualizar tienda
+    </button>
     <a href="/admin/productos/nuevo" class="adm-btn-p">+ Nuevo producto</a>
   </div>
 </div>
+<script>
+async function bumpVersion(){
+  const btn = document.getElementById('bumpBtn');
+  btn.disabled = true; btn.textContent = 'Actualizando…';
+  try {
+    await fetch('/api/site-version/bump', { method:'POST', headers:{'Authorization':'Bearer <%=token%>'} });
+    btn.textContent = '✓ Actualizado';
+    setTimeout(()=>{ btn.disabled=false; btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Actualizar tienda'; }, 2500);
+  } catch(e){ btn.disabled=false; btn.textContent='Error'; }
+}
+</script>
 <div class="adm-stats">
   <div class="adm-stat"><div class="adm-stat-n"><%=stats.products%></div><div class="adm-stat-l">Productos activos</div></div>
   <div class="adm-stat"><div class="adm-stat-n"><%=stats.categories%></div><div class="adm-stat-l">Categorías</div></div>

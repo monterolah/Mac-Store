@@ -3,6 +3,29 @@ const { getFirestore } = require('../db/firebase');
 const router  = express.Router();
 const fmt     = p => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(p||0);
 
+// ── Leer cookie sin cookie-parser ─────────────────────────────────────────
+function getCookie(req, name) {
+  const str = req.headers.cookie || '';
+  const pair = str.split(';').find(c => c.trim().startsWith(name + '='));
+  return pair ? decodeURIComponent(pair.split('=')[1].trim()) : null;
+}
+
+// ── Modo vendedor: inyectar en todas las respuestas ───────────────────────
+router.use((req, res, next) => {
+  res.locals.vendorMode = getCookie(req, 'vendorMode') === '1';
+  next();
+});
+
+// ── Activar / desactivar modo tienda ─────────────────────────────────────
+router.get('/tienda', (req, res) => {
+  res.cookie('vendorMode', '1', { maxAge: 8 * 60 * 60 * 1000, sameSite: 'lax' });
+  res.redirect('/');
+});
+router.get('/salir-tienda', (req, res) => {
+  res.clearCookie('vendorMode');
+  res.redirect('/');
+});
+
 // ── Helpers de query optimizados ──────────────────────────────────────────────
 
 async function getSiteData() {
@@ -136,8 +159,17 @@ router.get('/productos', async (req, res) => {
       getAnnouncements()
     ]);
 
-    const products = productsSnap.docs.map(docToObj);
-    res.render('catalog', { req, title: 'Catálogo', description: 'Todos los productos Apple disponibles', settings, categories, products, announcements, formatPrice: fmt });
+    let products = productsSnap.docs.map(docToObj);
+    const q = (req.query.q || '').trim().toLowerCase();
+    if (q) {
+      products = products.filter(p =>
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q) ||
+        (p.category || '').toLowerCase().includes(q) ||
+        (p.badge || '').toLowerCase().includes(q)
+      );
+    }
+    res.render('catalog', { req, title: q ? `Búsqueda: ${req.query.q}` : 'Catálogo', description: 'Todos los productos Apple disponibles', settings, categories, products, announcements, formatPrice: fmt, searchQuery: req.query.q || '' });
   } catch (e) { console.error(e); res.status(500).send('Error interno del servidor'); }
 });
 

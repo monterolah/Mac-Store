@@ -32,12 +32,14 @@
     <button class="nav-search-btn" id="searchToggle" aria-label="Buscar">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
     </button>
+    <% if(locals.vendorMode){ %>
     <button onclick="openQuotationModal(null)"
       style="margin-left:8px;background:#1d1d1f;color:#fff;border:none;padding:7px 14px;border-radius:980px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;transition:background .2s;white-space:nowrap"
       onmouseover="this.style.background='#333'" onmouseout="this.style.background='#1d1d1f'">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       Cotización
     </button>
+    <% } %>
     <% if(!settings || settings.show_admin_icon !== false){ %>
     <a href="<% if(typeof req !== 'undefined' && req.session && req.session.adminToken){ %>/admin<% } else { %>/admin/login<% } %>"
        style="margin-left:6px;display:flex;align-items:center;color:var(--black);opacity:.8;transition:opacity .2s"

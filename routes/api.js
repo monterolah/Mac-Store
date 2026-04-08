@@ -842,6 +842,23 @@ router.get('/settings', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── SITE VERSION (auto-refresh) ───────────────────────────────────────────
+router.get('/site-version', async (_req, res) => {
+  try {
+    const doc = await getFirestore().collection('settings').doc('main').get();
+    const v = doc.exists ? (doc.data().site_version || 1) : 1;
+    res.json({ version: v });
+  } catch(e) { res.json({ version: 1 }); }
+});
+
+router.post('/site-version/bump', requireAdminAPI, async (_req, res) => {
+  try {
+    const v = Date.now();
+    await getFirestore().collection('settings').doc('main').set({ site_version: v }, { merge: true });
+    res.json({ ok: true, version: v });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 router.put('/settings', requireAdminAPI, upload.single('logo'), async (req, res) => {
   try {
     const updates = { ...req.body };
