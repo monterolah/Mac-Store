@@ -410,19 +410,19 @@ function buildPdfBuffer(q) {
         doc.save();
         doc.roundedRect(LM, y, cuotaW, cuotaH, 8).lineWidth(1.5).strokeColor(C.border).stroke();
         doc.restore();
-        doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(lbl1, LM, y + 8, { width: cuotaW, align: 'center' });
-        doc.font('Helvetica-Bold').fontSize(20).fillColor(C.black).text(`$${(total / div1).toFixed(2)}`, LM, y + 22, { width: cuotaW, align: 'center' });
-        doc.font('Helvetica').fontSize(8).fillColor(C.lightG).text('por mes', LM, y + 44, { width: cuotaW, align: 'center' });
+        doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(lbl1, LM, y + 10, { width: cuotaW, align: 'center', lineBreak: false });
+        doc.font('Helvetica-Bold').fontSize(20).fillColor(C.black).text(`$${(total / div1).toFixed(2)}`, LM, y + 24, { width: cuotaW, align: 'center', lineBreak: false });
+        doc.font('Helvetica').fontSize(8).fillColor(C.lightG).text('por mes', LM, y + 46, { width: cuotaW, align: 'center', lineBreak: false });
 
         const c2x = LM + cuotaW + 14;
         doc.save();
         doc.roundedRect(c2x, y, cuotaW, cuotaH, 8).lineWidth(1.5).strokeColor(C.border).stroke();
         doc.restore();
-        doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(lbl2, c2x, y + 8, { width: cuotaW, align: 'center' });
-        doc.font('Helvetica-Bold').fontSize(20).fillColor(C.black).text(`$${(total / div2).toFixed(2)}`, c2x, y + 22, { width: cuotaW, align: 'center' });
-        doc.font('Helvetica').fontSize(8).fillColor(C.lightG).text('por mes', c2x, y + 44, { width: cuotaW, align: 'center' });
+        doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(lbl2, c2x, y + 10, { width: cuotaW, align: 'center', lineBreak: false });
+        doc.font('Helvetica-Bold').fontSize(20).fillColor(C.black).text(`$${(total / div2).toFixed(2)}`, c2x, y + 24, { width: cuotaW, align: 'center', lineBreak: false });
+        doc.font('Helvetica').fontSize(8).fillColor(C.lightG).text('por mes', c2x, y + 46, { width: cuotaW, align: 'center', lineBreak: false });
 
-        y += cuotaH + 16;
+        y += cuotaH + 24;
       }
 
       // ── MÉTODOS DE PAGO ──
