@@ -989,7 +989,8 @@ router.post('/quotations', requireAdminAPI, async (req, res) => {
 // EXPORT PDF — PDF NATIVO CON PDFKIT
 // Guarda UNA sola vez en historial (eliminado el doble guardado del original)
 // ══════════════════════════════════════════════════════════════════════════
-router.post('/quotations/export-pdf', requireAdminAPI, async (req, res) => {
+router.post('/quotations/export-pdf', async (req, res) => {
+
   try {
     const {
       client, company, seller, notes, validity, ivaMode,
