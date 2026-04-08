@@ -243,7 +243,7 @@ function buildPdfBuffer(q) {
 
         let rowH = 28;
         if (specEntries.length)  rowH += specEntries.length * 14 + 8;
-        if (fichaEntries.length) rowH += fichaEntries.length * 14 + 14;
+        if (fichaEntries.length) rowH += fichaEntries.length * 22 + 14;
         if (disc > 0)   rowH += 14;
         if (colors.length) rowH += 16;
         rowH = Math.max(rowH, 50);
@@ -301,12 +301,15 @@ function buildPdfBuffer(q) {
           doc.font('Helvetica-Bold').fontSize(7).fillColor(C.lightG).text('FICHA TÉCNICA', contentX, y);
           y += 10;
           fichaEntries.forEach(([k, v], fi) => {
-            if (fi % 2 === 0) drawRect(contentX, y - 1, fichaW, 13, '#f9f9f9');
-            doc.font('Helvetica-Bold').fontSize(8).fillColor(C.grey).text(k, contentX + 4, y + 1, { width: fichaW * 0.38 });
-            doc.font('Helvetica').fontSize(8).fillColor(C.black).text(String(v), contentX + fichaW * 0.4, y + 1, { width: fichaW * 0.58 });
-            y += 14;
+            const valStr = String(v);
+            const valH = doc.font('Helvetica').fontSize(8).heightOfString(valStr, { width: fichaW * 0.57 });
+            const rH = Math.max(valH, 10) + 8;
+            if (fi % 2 === 0) drawRect(contentX, y - 2, fichaW, rH + 2, '#f9f9f9');
+            doc.font('Helvetica-Bold').fontSize(8).fillColor(C.grey).text(String(k), contentX + 4, y + 3, { width: fichaW * 0.37 });
+            doc.font('Helvetica').fontSize(8).fillColor(C.black).text(valStr, contentX + fichaW * 0.4, y + 3, { width: fichaW * 0.57 });
+            y += rH + 2;
           });
-          y += 4;
+          y += 6;
         }
 
         // Descuento
@@ -1054,6 +1057,12 @@ router.post('/quotations/export-pdf', async (req, res) => {
       }
     }
 
+    if (!quotation.footNotes) {
+      try {
+        const sDoc = await getFirestore().collection('settings').doc('main').get();
+        if (sDoc.exists && sDoc.data().pdf_foot_notes) quotation.footNotes = sDoc.data().pdf_foot_notes;
+      } catch(e) {}
+    }
     const pdfBuffer = await buildPdfBuffer(quotation);
 
     res.setHeader('Content-Type', 'application/pdf');

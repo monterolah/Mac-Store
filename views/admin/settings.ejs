@@ -145,6 +145,13 @@
       <button class="adm-btn-s" style="font-size:12px;margin-top:4px" onclick="addSupCard()">+ Agregar tarjeta</button>
     </div>
 
+    <!-- PDF NOTA AL PIE -->
+    <div class="adm-fc" style="margin-bottom:14px">
+      <div class="adm-fct">PDF — Nota al pie predeterminada</div>
+      <p style="font-size:12px;color:var(--g4);margin-bottom:10px">Aparece al final de todas las cotizaciones en PDF. Puedes usarla para condiciones, vigencia, etc.</p>
+      <textarea id="sPdfFootNotes" rows="3" style="width:100%;padding:8px;border:1px solid var(--g2);border-radius:8px;font-size:13px;resize:vertical" placeholder="Ej: Precios sujetos a cambio sin previo aviso. Cotización válida por 7 días."><%=settings.pdf_foot_notes||''%></textarea>
+    </div>
+
     <!-- FOOTER -->
     <div class="adm-fc" style="margin-bottom:14px">
       <div class="adm-fct">Footer — columnas de links</div>
@@ -282,6 +289,7 @@ async function saveAllSettings(){
   fd.append('support_subtitle',  document.getElementById('s_sup_sub').value);
   fd.append('support_cards',     JSON.stringify(supCards));
   fd.append('footer_cols',       JSON.stringify(footerCols));
+  fd.append('pdf_foot_notes',    document.getElementById('sPdfFootNotes').value);
 
   const logoFile=document.getElementById('logoFile');
   if(logoFile.files&&logoFile.files[0]) fd.append('logo',logoFile.files[0]);
