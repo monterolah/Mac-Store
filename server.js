@@ -71,7 +71,7 @@ function addSecurityHeaders(req, res, next) {
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com; font-src 'self' fonts.gstatic.com cdnjs.cloudflare.com data:; img-src 'self' data: https: blob: storage.googleapis.com firebasestorage.googleapis.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com; font-src 'self' fonts.gstatic.com cdnjs.cloudflare.com data:; img-src 'self' data: https: blob: storage.googleapis.com firebasestorage.googleapis.com; connect-src 'self' https://res.cloudinary.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
   );
   // Sin caché en todas las rutas sensibles y en archivos JS
   if (
