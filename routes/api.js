@@ -1165,8 +1165,13 @@ module.exports = router;
 // ── GEMINI ASSISTANT ──────────────────────────────────────────────────────
 const crypto = require('crypto');
 const GEMINI_API_KEY = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+const GEMINI_FALLBACK_MODELS = [
+  GEMINI_MODEL,
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-latest'
+].filter((m, i, arr) => m && arr.indexOf(m) === i);
 
 const FRONT_ALLOWED_FILES = [
   'views/home.ejs',
@@ -1227,34 +1232,51 @@ async function callGemini(prompt) {
     throw new Error('Falta GOOGLE_AI_API_KEY (o GEMINI_API_KEY) en variables de entorno');
   }
   const https = require('https');
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 4096 }
-    });
-    const url = new URL(GEMINI_URL);
-    const options = {
-      hostname: url.hostname,
-      path: url.pathname + url.search,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-    };
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          if (parsed.error?.message) return reject(new Error(parsed.error.message));
-          const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          resolve(text);
-        } catch(e) { reject(e); }
-      });
-    });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.2, maxOutputTokens: 4096 }
   });
+
+  let lastError = null;
+  for (const model of GEMINI_FALLBACK_MODELS) {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+    try {
+      const text = await new Promise((resolve, reject) => {
+        const url = new URL(geminiUrl);
+        const options = {
+          hostname: url.hostname,
+          path: url.pathname + url.search,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+        };
+        const req = https.request(options, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.error?.message) return reject(new Error(parsed.error.message));
+              const out = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              resolve(out);
+            } catch(e) { reject(e); }
+          });
+        });
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+      });
+
+      if (text) return text;
+      lastError = new Error(`Respuesta vacía del modelo ${model}`);
+    } catch (e) {
+      lastError = e;
+      const msg = String(e?.message || '').toLowerCase();
+      const shouldTryNext = msg.includes('not found') || msg.includes('not supported') || msg.includes('model');
+      if (!shouldTryNext) break;
+    }
+  }
+
+  throw lastError || new Error('No fue posible obtener respuesta de Gemini');
 }
 
 // Respuesta general del chatbot
