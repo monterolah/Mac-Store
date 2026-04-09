@@ -116,7 +116,7 @@ button{font-family:var(--font);cursor:pointer}
 .ms-slide.active .ms-hero-bg{transform:scale(1)}
 .ms-hero-overlay{
   position:absolute;inset:0;z-index:1;
-  background:linear-gradient(to bottom,rgba(0,0,0,.15) 0%,rgba(0,0,0,.45) 100%);
+  background:linear-gradient(to bottom,rgba(0,0,0,.08) 0%,rgba(0,0,0,.32) 100%);
 }
 .ms-hero-content{
   position:relative;z-index:2;
@@ -132,7 +132,7 @@ button{font-family:var(--font);cursor:pointer}
   letter-spacing:.01em;margin-bottom:8px;
 }
 .ms-hero-title{
-  font-size:clamp(52px,9vw,96px);
+  font-size:clamp(44px,8vw,84px);
   font-weight:700;letter-spacing:-.055em;
   line-height:1.01;margin-bottom:14px;
 }
@@ -159,12 +159,12 @@ button{font-family:var(--font);cursor:pointer}
 .ms-btn-primary{
   display:inline-flex;align-items:center;justify-content:center;
   background:var(--blue);color:#fff;
-  padding:13px 24px;border-radius:980px;font-size:17px;font-weight:400;
+  padding:12px 22px;border-radius:980px;font-size:16px;font-weight:500;
   border:none;cursor:pointer;font-family:var(--font);
-  transition:all .2s var(--ease);text-decoration:none;
+  transition:background .2s var(--ease),opacity .2s var(--ease);text-decoration:none;
 }
-.ms-btn-primary:hover{background:var(--blue-h);transform:scale(1.02)}
-.ms-btn-primary:active{transform:scale(.98)}
+.ms-btn-primary:hover{background:var(--blue-h)}
+.ms-btn-primary:active{opacity:.92}
 .ms-btn-ghost{
   display:inline-flex;align-items:center;justify-content:center;
   background:rgba(255,255,255,.15);color:#fff;
@@ -178,11 +178,11 @@ button{font-family:var(--font);cursor:pointer}
 .ms-btn-outline{
   display:inline-flex;align-items:center;justify-content:center;
   background:transparent;color:var(--blue);border:1px solid var(--blue);
-  padding:13px 24px;border-radius:980px;font-size:17px;font-weight:400;
+  padding:12px 22px;border-radius:980px;font-size:16px;font-weight:500;
   cursor:pointer;font-family:var(--font);
   transition:all .2s;text-decoration:none;
 }
-.ms-btn-outline:hover{background:var(--blue);color:#fff;transform:scale(1.02)}
+.ms-btn-outline:hover{background:var(--blue);color:#fff}
 .ms-btn-sm{padding:9px 18px;font-size:14px}
 
 /* ── SHOWCASE SECTIONS ── */
@@ -213,10 +213,10 @@ button{font-family:var(--font);cursor:pointer}
 .ms-showcase-img img{
   width:100%;max-height:500px;
   object-fit:contain;display:block;
-  filter:drop-shadow(0 32px 80px rgba(0,0,0,.2));
+  filter:drop-shadow(0 18px 44px rgba(0,0,0,.14));
   transition:transform .8s cubic-bezier(.25,.46,.45,.94);
 }
-.ms-showcase:hover .ms-showcase-img img{transform:translateY(-16px) scale(1.04)}
+.ms-showcase:hover .ms-showcase-img img{transform:translateY(-6px) scale(1.015)}
 .ms-light{background:var(--g1);color:var(--black)}
 .ms-dark{background:#000;color:#f5f5f7}
 .ms-showcase-inner{max-width:980px;width:100%;display:flex;flex-direction:column;align-items:center;gap:32px;}
@@ -238,16 +238,16 @@ button{font-family:var(--font);cursor:pointer}
   gap:24px;
 }
 .ms-card{
-  background:#fff;border-radius:18px;overflow:hidden;
+  background:#fff;border-radius:20px;overflow:hidden;
   display:flex;flex-direction:column;
   text-decoration:none;color:inherit;
   transition:transform .35s var(--ease),box-shadow .35s var(--ease);
   border:1px solid rgba(0,0,0,.07);
-  box-shadow:0 2px 8px rgba(0,0,0,.05);
+  box-shadow:0 1px 6px rgba(0,0,0,.04);
 }
 .ms-card:hover{
-  box-shadow:0 16px 48px rgba(0,0,0,.14);
-  transform:translateY(-6px);
+  box-shadow:0 8px 24px rgba(0,0,0,.09);
+  transform:translateY(-2px);
 }
 .ms-card-img{
   height:280px;
@@ -261,7 +261,7 @@ button{font-family:var(--font);cursor:pointer}
   transition:transform .5s var(--ease);
   transform:scale(var(--img-scale, 1));
 }
-.ms-card:hover .ms-card-img img{transform:scale(calc(var(--img-scale, 1) * 1.06))}
+.ms-card:hover .ms-card-img img{transform:scale(calc(var(--img-scale, 1) * 1.02))}
 .ms-card-badge{
   position:absolute;top:12px;left:12px;
   background:var(--black);color:#fff;
@@ -619,7 +619,7 @@ footer{background:#1d1d1f;border-top:none;padding:56px 0 24px}
   cursor:pointer;
 }
 .ms-card:hover .ms-card-swatch{transform:scale(1.08)}
-.ms-card-swatch:hover{box-shadow:0 0 0 1px rgba(0,0,0,.18);transform:scale(1.12)!important}
+.ms-card-swatch:hover{box-shadow:0 0 0 1px rgba(0,0,0,.18);transform:scale(1.06)!important}
 .ms-card-swatch.active{box-shadow:0 0 0 3px rgba(0,113,227,.22)}
 .ms-card-swatch-more{
   width:26px;height:26px;border-radius:50%;
@@ -633,22 +633,7 @@ footer{background:#1d1d1f;border-top:none;padding:56px 0 24px}
 /* ── GLOW / SILUETA ── */
 .ms-card-img{position:relative;overflow:hidden}
 .ms-card-glow{
-  position:absolute;
-  inset:15%;
-  border-radius:50%;
-  background:radial-gradient(ellipse at center, rgba(120,120,120,.18) 0%, transparent 70%);
-  filter:blur(18px);
-  transition:all .6s ease;
-  pointer-events:none;
-  z-index:0;
-  opacity:.7;
-  animation:glowPulse 3s ease-in-out infinite;
-}
-.ms-card:hover .ms-card-glow{
-  opacity:1;
-  background:radial-gradient(ellipse at center, rgba(100,100,255,.22) 0%, rgba(120,200,255,.12) 40%, transparent 70%);
-  filter:blur(22px);
-  transform:scale(1.15);
+  display:none;
 }
 .ms-card-img img{position:relative;z-index:1}
 .ms-card-badge{z-index:2}
@@ -671,6 +656,6 @@ footer{background:#1d1d1f;border-top:none;padding:56px 0 24px}
   transition: opacity .4s ease, transform .4s ease, filter .4s ease;
 }
 #mainImg:hover {
-  filter: drop-shadow(0 12px 40px rgba(0,0,0,.18));
-  transform: scale(1.02) !important;
+  filter: drop-shadow(0 10px 30px rgba(0,0,0,.14));
+  transform: scale(1.01) !important;
 }
