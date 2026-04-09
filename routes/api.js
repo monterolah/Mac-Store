@@ -1163,15 +1163,74 @@ router.get('/clients-public', requireAdminAPI, async (req, res) => {
 module.exports = router;
 
 // ── GEMINI ASSISTANT ──────────────────────────────────────────────────────
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+const crypto = require('crypto');
+const GEMINI_API_KEY = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+
+const FRONT_ALLOWED_FILES = [
+  'views/home.ejs',
+  'views/category.ejs',
+  'views/product.ejs',
+  'views/partials/header.ejs',
+  'views/partials/footer.ejs',
+  'public/css/macstore.css',
+  'public/js/macstore.js'
+];
+
+const FRONT_TARGET_GROUPS = {
+  home: ['views/home.ejs', 'views/partials/header.ejs', 'views/partials/footer.ejs', 'public/css/macstore.css'],
+  catalogo: ['views/category.ejs', 'views/partials/header.ejs', 'views/partials/footer.ejs', 'public/css/macstore.css'],
+  producto: ['views/product.ejs', 'views/partials/header.ejs', 'views/partials/footer.ejs', 'public/css/macstore.css'],
+  layout: ['views/partials/header.ejs', 'views/partials/footer.ejs', 'public/css/macstore.css'],
+  todo: FRONT_ALLOWED_FILES
+};
+
+const frontPreviewStore = new Map();
+
+function cleanGeminiJson(rawText) {
+  return String(rawText || '')
+    .trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+}
+
+function buildFrontFilesSnapshot(target) {
+  const rootDir = path.join(__dirname, '..');
+  const selected = FRONT_TARGET_GROUPS[target] || FRONT_TARGET_GROUPS.todo;
+  return selected.map(relPath => {
+    const absPath = path.join(rootDir, relPath);
+    const content = fs.existsSync(absPath) ? fs.readFileSync(absPath, 'utf8') : '';
+    return { relPath, absPath, content };
+  });
+}
+
+function validateFrontChanges(changes) {
+  if (!Array.isArray(changes) || !changes.length) {
+    throw new Error('Gemini no devolvió cambios válidos');
+  }
+  const unique = new Set();
+  changes.forEach(change => {
+    if (!change || typeof change !== 'object') throw new Error('Formato de cambio inválido');
+    if (!FRONT_ALLOWED_FILES.includes(change.path)) throw new Error(`Archivo no permitido: ${change.path}`);
+    if (unique.has(change.path)) throw new Error(`Archivo repetido: ${change.path}`);
+    if (typeof change.content !== 'string') throw new Error(`Contenido inválido para ${change.path}`);
+    if (change.content.length < 10) throw new Error(`Contenido demasiado corto para ${change.path}`);
+    unique.add(change.path);
+  });
+}
 
 async function callGemini(prompt) {
+  if (!GEMINI_API_KEY) {
+    throw new Error('Falta GOOGLE_AI_API_KEY (o GEMINI_API_KEY) en variables de entorno');
+  }
   const https = require('https');
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
+      generationConfig: { temperature: 0.2, maxOutputTokens: 4096 }
     });
     const url = new URL(GEMINI_URL);
     const options = {
@@ -1186,6 +1245,7 @@ async function callGemini(prompt) {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(data);
+          if (parsed.error?.message) return reject(new Error(parsed.error.message));
           const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || '';
           resolve(text);
         } catch(e) { reject(e); }
@@ -1252,7 +1312,7 @@ ${JSON.stringify(product, null, 2)}
 
 El administrador dice: "${instruction}"
 
-Tu tarea es interpretar la instrucción y devolver ÚNICAMENTE un objeto JSON con los campos del producto que deben actualizarse. 
+Tu tarea es interpretar la instrucción y devolver ÚNICAMENTE un objeto JSON con los campos del producto que deben actualizarse.
 No inventes datos que no estén en la instrucción.
 Si la instrucción es pegar una ficha técnica, extrae: nombre, descripción, variantes de capacidad (variants), colores (color_variants con solo el nombre), specs técnicas (specs_table como array de {label, value}), precio si se menciona.
 Si dice "desactiva", devuelve {"active": false}.
@@ -1263,18 +1323,13 @@ Responde SOLO con el JSON, sin explicaciones, sin markdown, sin bloques de códi
 
     const geminiResponse = await callGemini(prompt);
 
-    // Limpiar respuesta
-    let cleaned = geminiResponse.trim();
-    cleaned = cleaned.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
-
     let updates;
     try {
-      updates = JSON.parse(cleaned);
+      updates = JSON.parse(cleanGeminiJson(geminiResponse));
     } catch(e) {
       return res.json({ success: false, message: 'Gemini respondió: ' + geminiResponse, raw: true });
     }
 
-    // Aplicar updates a Firestore
     await getFirestore().collection('products').doc(productId).update({
       ...updates,
       updatedAt: new Date()
@@ -1282,6 +1337,130 @@ Responde SOLO con el JSON, sin explicaciones, sin markdown, sin bloques de códi
 
     res.json({ success: true, updates, message: 'Producto actualizado correctamente' });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GEMINI FRONT EDITOR (preview + apply) ────────────────────────────────
+router.post('/gemini/front-preview', requireAdminAPI, async (req, res) => {
+  try {
+    const instruction = cleanText(req.body.instruction, 6000);
+    const target = cleanText(req.body.target || 'todo', 40).toLowerCase();
+    if (!instruction) return res.status(400).json({ error: 'Escribe una instrucción' });
+
+    const fileSnapshot = buildFrontFilesSnapshot(target);
+    const filesPrompt = fileSnapshot.map(f => `### FILE: ${f.relPath}\n${f.content}`).join('\n\n');
+
+    const prompt = `Eres un experto en frontend (EJS + CSS + JS vanilla).
+Debes proponer cambios sobre estos archivos del proyecto.
+
+INSTRUCCIÓN DEL ADMIN:
+${instruction}
+
+ARCHIVOS DISPONIBLES:
+${fileSnapshot.map(f => `- ${f.relPath}`).join('\n')}
+
+CONTENIDO ACTUAL:
+${filesPrompt}
+
+Reglas estrictas:
+1) Devuelve SOLO JSON válido.
+2) Formato exacto:
+{
+  "summary": "resumen corto",
+  "changes": [
+    { "path": "ruta/archivo", "content": "contenido completo final del archivo" }
+  ]
+}
+3) Solo puedes usar rutas listadas en ARCHIVOS DISPONIBLES.
+4) Cada content debe ser el archivo COMPLETO, no fragmentos.
+5) No cambies texto de negocio (precios, teléfonos, datos comerciales) salvo que la instrucción lo pida.
+6) Mantén compatibilidad responsive (desktop y mobile).
+7) Conserva sintaxis EJS válida.
+8) Si no necesitas editar un archivo, no lo incluyas.`;
+
+    const geminiResponse = await callGemini(prompt);
+    let parsed;
+    try {
+      parsed = JSON.parse(cleanGeminiJson(geminiResponse));
+    } catch {
+      return res.status(400).json({ error: 'Gemini no devolvió JSON válido', raw: geminiResponse });
+    }
+
+    const changes = Array.isArray(parsed.changes) ? parsed.changes : [];
+    validateFrontChanges(changes);
+
+    const rootDir = path.join(__dirname, '..');
+    const normalizedChanges = changes.map(c => {
+      const absPath = path.join(rootDir, c.path);
+      const before = fs.readFileSync(absPath, 'utf8');
+      return {
+        path: c.path,
+        absPath,
+        before,
+        after: c.content,
+        changed: before !== c.content
+      };
+    }).filter(c => c.changed);
+
+    if (!normalizedChanges.length) {
+      return res.json({ ok: true, summary: parsed.summary || 'No hubo cambios necesarios', token: null, files: [] });
+    }
+
+    const token = crypto.randomUUID();
+    const expiresAt = Date.now() + (30 * 60 * 1000);
+    frontPreviewStore.set(token, { expiresAt, changes: normalizedChanges });
+
+    res.json({
+      ok: true,
+      summary: parsed.summary || 'Vista previa generada',
+      token,
+      files: normalizedChanges.map(c => ({
+        path: c.path,
+        beforeSize: c.before.length,
+        afterSize: c.after.length,
+        preview: c.after.slice(0, 2400)
+      }))
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/gemini/front-apply', requireAdminAPI, async (req, res) => {
+  try {
+    const token = cleanText(req.body.token, 120);
+    if (!token) return res.status(400).json({ error: 'Token requerido' });
+
+    const preview = frontPreviewStore.get(token);
+    if (!preview) return res.status(404).json({ error: 'Preview no encontrado o expirado' });
+    if (Date.now() > preview.expiresAt) {
+      frontPreviewStore.delete(token);
+      return res.status(410).json({ error: 'Preview expirado, genera uno nuevo' });
+    }
+
+    const rootDir = path.join(__dirname, '..');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupDir = path.join(rootDir, '.ai-front-backups', `${stamp}-${token.slice(0, 8)}`);
+
+    for (const c of preview.changes) {
+      const backupPath = path.join(backupDir, c.path);
+      fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+      fs.writeFileSync(backupPath, c.before, 'utf8');
+    }
+
+    for (const c of preview.changes) {
+      fs.writeFileSync(c.absPath, c.after, 'utf8');
+    }
+
+    frontPreviewStore.delete(token);
+
+    res.json({
+      ok: true,
+      changedFiles: preview.changes.map(c => c.path),
+      backupDir: path.relative(rootDir, backupDir)
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ══════════════════════════════════════════════

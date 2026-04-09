@@ -130,7 +130,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: isProd ? '7d' : 0 }));
 
 const adminSessionOptions = {
-  store: undefined,
+  store: new session.MemoryStore(),
   secret: ensureSecret('SESSION_SECRET', crypto.randomBytes(32).toString('hex')),
   resave: false,
   saveUninitialized: false,

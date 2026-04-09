@@ -9,6 +9,40 @@
 
 <div style="max-width:860px;margin:0 auto;padding:0 0 60px">
 
+  <!-- FRONT EDITOR CON IA -->
+  <div class="adm-fc" id="frontEditorBox" style="border:1.5px solid #dbeafe;background:linear-gradient(180deg,#f8fbff 0%,#fff 100%)">
+    <div class="adm-fct">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:middle"><path d="M12 3v18M3 12h18"/><path d="M7 7l10 10M17 7L7 17"/></svg>
+      Editor Frontend con IA Studio
+    </div>
+    <p style="font-size:13px;color:#4b5563;margin-bottom:12px">Escribe un cambio visual y Gemini te propone una vista previa antes de aplicar archivos reales del frontend.</p>
+
+    <div class="adm-f-row" style="margin-bottom:8px">
+      <div class="adm-f" style="margin:0">
+        <label>Zona a editar</label>
+        <select id="frontTarget">
+          <option value="home">Home</option>
+          <option value="catalogo">Catálogo / categoría</option>
+          <option value="producto">Página de producto</option>
+          <option value="layout">Header + Footer + CSS</option>
+          <option value="todo">Todo el frontend permitido</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="adm-f" style="margin:0">
+      <label>Instrucción para IA</label>
+      <textarea id="frontInstruction" style="min-height:120px;resize:vertical" placeholder="Ejemplo: Haz la home más premium tipo Apple, con hero más limpio, mejor jerarquía tipográfica, tarjetas más sobrias y mejor responsive móvil."></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+      <button id="frontPreviewBtn" class="adm-btn-p" onclick="generateFrontPreview()">Generar preview</button>
+      <button id="frontApplyBtn" class="adm-btn-s" onclick="applyFrontPreview()" style="display:none">Aplicar cambios</button>
+    </div>
+
+    <div id="frontPreviewResult" style="display:none;margin-top:14px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px"></div>
+  </div>
+
   <!-- PASO 1: BUSCAR PRODUCTO -->
   <div class="adm-fc" id="step1">
     <div class="adm-fct">
@@ -107,6 +141,89 @@ Ejemplos:
 <script>
 let _selectedProduct = null;
 let _searchTimer = null;
+let _frontPreviewToken = null;
+
+async function generateFrontPreview() {
+  const instruction = document.getElementById('frontInstruction').value.trim();
+  const target = document.getElementById('frontTarget').value;
+  if (!instruction) return alert('Escribe una instrucción para el frontend');
+
+  const btn = document.getElementById('frontPreviewBtn');
+  const box = document.getElementById('frontPreviewResult');
+  btn.disabled = true;
+  btn.textContent = 'Generando...';
+
+  try {
+    const r = await fetch('/api/gemini/front-preview', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer <%= token %>'
+      },
+      body: JSON.stringify({ instruction, target })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'No se pudo generar preview');
+
+    _frontPreviewToken = data.token || null;
+    document.getElementById('frontApplyBtn').style.display = _frontPreviewToken ? 'inline-flex' : 'none';
+
+    box.style.display = 'block';
+    box.innerHTML = `
+      <div style="font-size:13px;color:#166534;margin-bottom:10px"><strong>Resumen:</strong> ${data.summary || 'Preview generado'}</div>
+      ${!data.files || !data.files.length ? '<div style="font-size:12px;color:#6b7280">No hay cambios para aplicar.</div>' : data.files.map(f => `
+        <details style="margin-bottom:8px;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;background:#fafafa">
+          <summary style="cursor:pointer;font-size:12px;font-weight:600">${f.path} · ${f.beforeSize} → ${f.afterSize} chars</summary>
+          <pre style="margin-top:8px;max-height:220px;overflow:auto;background:#111827;color:#e5e7eb;border-radius:6px;padding:10px;font-size:11px;line-height:1.4">${(f.preview || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+        </details>
+      `).join('')}
+    `;
+  } catch (e) {
+    _frontPreviewToken = null;
+    document.getElementById('frontApplyBtn').style.display = 'none';
+    box.style.display = 'block';
+    box.innerHTML = `<div style="font-size:12px;color:#b91c1c">${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generar preview';
+  }
+}
+
+async function applyFrontPreview() {
+  if (!_frontPreviewToken) return alert('Primero genera un preview');
+  const btn = document.getElementById('frontApplyBtn');
+  btn.disabled = true;
+  btn.textContent = 'Aplicando...';
+
+  try {
+    const r = await fetch('/api/gemini/front-apply', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer <%= token %>'
+      },
+      body: JSON.stringify({ token: _frontPreviewToken })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'No se pudo aplicar');
+
+    const box = document.getElementById('frontPreviewResult');
+    box.style.display = 'block';
+    box.innerHTML = `
+      <div style="font-size:13px;color:#166534"><strong>Cambios aplicados</strong></div>
+      <div style="font-size:12px;color:#374151;margin-top:6px">Archivos: ${(data.changedFiles || []).join(', ')}</div>
+      <div style="font-size:12px;color:#374151;margin-top:2px">Backup: ${data.backupDir || '(sin backup)'}</div>
+    `;
+
+    _frontPreviewToken = null;
+    btn.style.display = 'none';
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Aplicar cambios';
+  }
+}
 
 async function searchProducts(q) {
   clearTimeout(_searchTimer);
