@@ -1,0 +1,57 @@
+<%- include('../partials/admin-layout', {pageTitle:'Dashboard', activePage:'dashboard'}) %>
+<div class="adm-ph">
+  <div><h1>Dashboard</h1><p>Bienvenido, <%=admin.name%>. Tu tienda está activa.</p></div>
+  <div class="adm-ph-r">
+    <button onclick="bumpVersion()" class="adm-btn-s" id="bumpBtn" title="Recarga la tienda en todos los dispositivos conectados">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Actualizar tienda
+    </button>
+    <a href="/admin/productos/nuevo" class="adm-btn-p">+ Nuevo producto</a>
+  </div>
+</div>
+<script>
+async function bumpVersion(){
+  const btn = document.getElementById('bumpBtn');
+  btn.disabled = true; btn.textContent = 'Actualizando…';
+  try {
+    await fetch('/api/site-version/bump', { method:'POST', headers:{'Authorization':'Bearer <%=token%>'} });
+    btn.textContent = '✓ Actualizado';
+    setTimeout(()=>{ btn.disabled=false; btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Actualizar tienda'; }, 2500);
+  } catch(e){ btn.disabled=false; btn.textContent='Error'; }
+}
+</script>
+<div class="adm-stats">
+  <div class="adm-stat"><div class="adm-stat-n"><%=stats.products%></div><div class="adm-stat-l">Productos activos</div></div>
+  <div class="adm-stat"><div class="adm-stat-n"><%=stats.categories%></div><div class="adm-stat-l">Categorías</div></div>
+  <div class="adm-stat"><div class="adm-stat-n"><%=stats.banners%></div><div class="adm-stat-l">Banners activos</div></div>
+  <div class="adm-stat"><div class="adm-stat-n" style="font-size:18px;color:#1a7f37;padding-top:6px">● En línea</div><div class="adm-stat-l">Estado de tienda</div></div>
+</div>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+  <h2 style="font-size:18px;font-weight:600;letter-spacing:-.03em">Productos recientes</h2>
+  <a href="/admin/productos" class="adm-btn-s" style="font-size:12px;padding:6px 14px">Ver todos →</a>
+</div>
+<div class="pgrid">
+  <% (recentProducts||[]).slice(0,4).forEach(p=>{ %>
+  <div class="pc">
+    <div class="pc-img">
+      <img src="<%=p.image_url||''%>" alt="<%=p.name%>" onerror="this.style.display='none'">
+      <% if(p.badge){ %><div class="pc-badge"><%=p.badge%></div><% } %>
+      <div class="pc-acts">
+        <a href="/admin/productos/<%=p.id%>/editar" class="pc-act" title="Editar">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </a>
+      </div>
+    </div>
+    <div class="pc-body">
+      <div class="pc-name"><%=p.name%></div>
+      <div class="pc-foot">
+        <span class="pc-price"><%=formatPrice(p.price)%></span>
+        <div class="pc-status"><div class="pc-dot"></div><%=p.active?'Activo':'Inactivo'%></div>
+      </div>
+    </div>
+  </div>
+  <% }) %>
+</div>
+  </div></div>
+<script src="/js/admin.js"></script>
+</body></html>
