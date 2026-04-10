@@ -1837,7 +1837,8 @@ ${recentHistory ? recentHistory + '\n' : ''}Admin: ${message}`;
     // Fallback determinista: si Gemini no ejecuta acción o devuelve acción inválida, interpretamos comandos frecuentes
     const invalidUpdateAction = response.action === 'PRODUCT_UPDATE' && (!response.data?.productId || !response.data?.updates || !Object.keys(response.data.updates || {}).length);
     const invalidCreateAction = response.action === 'PRODUCT_CREATE' && !response.data?.product?.name;
-    const shouldForceDeterministic = !response.action || response.action === 'INFO' || invalidUpdateAction || invalidCreateAction;
+    const hasCapacityEnableCommand = /(?:habilita|habilitar|activa|activar)\s+[0-9]{2,4}\s?gb\s+para\s+/i.test(String(message || ''));
+    const shouldForceDeterministic = !response.action || response.action === 'INFO' || invalidUpdateAction || invalidCreateAction || hasCapacityEnableCommand;
 
     if (shouldForceDeterministic) {
       response = { message: response.message || 'Entendido.', action: null, data: null };
