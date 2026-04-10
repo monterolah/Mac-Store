@@ -28,8 +28,10 @@ function getGeminiApiKeys() {
 
 /**
  * Llama a la API de Gemini con el prompt dado y devuelve el texto bruto.
+ * @param {string} prompt
+ * @param {number} [temperature=0.25] - 0.25 para JSON estructurado, 0.8 para conversación libre
  */
-async function callGeminiBrain(prompt) {
+async function callGeminiBrain(prompt, temperature = 0.25) {
   const geminiApiKeys = getGeminiApiKeys();
   if (!geminiApiKeys.length) {
     throw new Error('Faltan GOOGLE_AI_API_KEY y GEMINI_API_KEY en variables de entorno');
@@ -37,7 +39,7 @@ async function callGeminiBrain(prompt) {
 
   const body = JSON.stringify({
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.25, maxOutputTokens: 4096 },
+    generationConfig: { temperature, maxOutputTokens: 4096 },
   });
 
   let lastError = null;
@@ -277,6 +279,29 @@ async function thinkRamiro(opts) {
   const catalogSummary = allProducts.map(p =>
     `ID=${p.id} | ${p.name} (${p.category}): $${p.price} | activo:${p.active ? 'si' : 'no'} | imagen:${p.image_url ? 'si' : 'no'}`
   ).join('\n');
+
+  // Atajo conversacional: si el mensaje claramente NO es operacional, evitar el brain JSON
+  // y responder directamente con un prompt natural para mayor coherencia y temperatura libre.
+  if (isLikelyGeneralConversation(userMessage) && !isLikelyOperationalMessage(userMessage)) {
+    const conversationalPrompt = `Eres Ramiro, asistente de ${storeName || 'MacStore'}.
+Responde en español, de forma natural, directa y coherente con lo que el usuario dice.
+No uses JSON. No menciones reglas internas. Responde exactamente sobre el tema del mensaje.
+${recentHistory ? `\nContexto reciente de la conversación:\n${recentHistory}\n` : ''}
+Usuario: ${userMessage}`;
+
+    try {
+      const convText = await callGeminiBrain(conversationalPrompt, 0.8);
+      const text = String(convText || '').trim();
+      if (text && !isGenericClarificationText(text)) {
+        const fb = buildFallbackDecision(userMessage, null, text);
+        fb.mode = 'general';
+        fb.intent = 'general_chat';
+        return { decision: fb, legacy: translateBrainToLegacy(fb) };
+      }
+    } catch {
+      // Si falla, continua con el brain completo
+    }
+  }
 
   const systemPrompt = buildRamiroSystemPrompt({
     storeName, personality, notes, memorySummary,
