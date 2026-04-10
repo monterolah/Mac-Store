@@ -272,6 +272,13 @@ function getQuickConversationalReply(message = '', admin = {}) {
   const n = normalizeForMatch(msg);
   if (!n) return null;
 
+  const helpIntent = /^(?:me\s+)?(?:puedes\s+)?ayudar(?:me)?\s*[.!?]*$/i.test(n)
+    || /^(?:si\s+)?(?:por\s+favor\s+)?(?:me\s+)?puedes\s+ayudar\s*[.!?]*$/i.test(n)
+    || /^(?:ayuda|ayudame|ay[úu]dame)\s*[.!?]*$/i.test(n);
+  if (helpIntent) {
+    return 'Aquí estoy para ayudarte de verdad. Puedo: 1) buscar productos, 2) cambiar precio, imagen, colores o stock, 3) activar/desactivar, 4) crear o borrar con confirmación y 5) apoyarte con cotizaciones. Dime qué quieres hacer y lo ejecuto ya.';
+  }
+
   const asksOwnName = /(sabes\s+como\s+me\s+llamo|como\s+me\s+llamo|cual\s+es\s+mi\s+nombre|cu[aá]l\s+es\s+mi\s+nombre|sabes\s+mi\s+nombre)/i.test(n);
   if (asksOwnName) {
     const displayName = getAdminDisplayName(admin);
