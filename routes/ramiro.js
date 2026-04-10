@@ -454,6 +454,11 @@ function isHardConfirmationActionType(actionType = '') {
   return ['delete', 'bulk', 'import', 'sync'].includes(t);
 }
 
+function isHardClarificationActionType(actionType = '') {
+  const t = String(actionType || '').toLowerCase();
+  return ['delete', 'bulk', 'import', 'sync'].includes(t);
+}
+
 function isAmbiguousShortCommand(message) {
   const raw = String(message || '').trim();
   if (!raw) return false;
@@ -782,7 +787,10 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
         confidence: brainLegacy.confidence,
       };
 
-      if (brainDecision?.needsClarification) {
+      const brainNeedsHardClarification = brainDecision?.needsClarification
+        && isHardClarificationActionType(brainDecision?.action?.type);
+
+      if (brainNeedsHardClarification) {
         const clarMessage = brainDecision.question || brainDecision.response || '¿Qué dato te falta para continuar?';
         await appendRamiroTranscript(db, {
           role: 'user',
@@ -820,6 +828,12 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
           message: clarMessage,
           conversationId,
         });
+      }
+
+      // Para acciones no destructivas no bloqueamos aquí: dejamos que el parser determinista
+      // intente ejecutar según contexto, incluso si el brain pidió aclaración.
+      if (brainDecision?.needsClarification && !brainNeedsHardClarification && !response.action) {
+        response.message = brainDecision.question || brainDecision.response || response.message;
       }
 
       const confirmed = isExplicitConfirmation(String(message || ''));
@@ -1455,7 +1469,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
 
       // 5) Crear producto (si incluye nombre claro y, de preferencia, precio)
       if (!response.action) {
-        const createCmd = msg.match(/^(?:y\s+)?(?:(?:me\s+)?(?:puedes?|podrias?|podr[ií]as?|pod[eé]s?)\s+)?(?:agrega|agregar|crea|crear|anade|añade|anadir|añadir|sube|subir|mete|meter|pon|poner)\s+(?:el\s+|un\s+|una\s+)?(?:producto\s+)?(.+)$/i);
+        const createCmd = msg.match(/^(?:y\s+)?(?:(?:me\s+)?(?:puedes?|podrias?|podr[ií]as?|pod[eé]s?|necesito\s+que|quiero\s+que)\s+)?(?:agrega|agregar|agregues?|crea|crear|crees?|anade|añade|anadir|añadir|sube|subir|mete|meter|pon|poner)\s+(?:el\s+|un\s+|una\s+)?(?:producto\s+)?(.+)$/i);
         if (createCmd && !/(colores?|imagen|foto|precio)/i.test(msgNorm)) {
           if (/significa|quiero decir|me refiero/.test(msgNorm)) {
             response = {
