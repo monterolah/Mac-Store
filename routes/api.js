@@ -1717,6 +1717,14 @@ router.post('/ramiro/chat', requireAdminAPI, async (req, res) => {
       createdAt: d.data().createdAt?.toDate?.()?.toLocaleDateString('es-SV') || 'reciente'
     }));
 
+    // Construir catálogo detallado para el prompt
+    const catalogoDetallado = allProducts.map(p => {
+      const info = [`ID: ${p.id}`, `Nombre: ${p.name}`, `Slug: ${p.slug}`, `Categoría: ${p.category}`, `Precio: $${p.price}`, `Stock: ${p.stock}`, `Activo: ${p.active}`];
+      if (p.variants.length) info.push(`Variantes: ${p.variants.map(v => `${v.label} $${v.price}`).join(', ')}`);
+      if (p.color_variants.length) info.push(`Colores: ${p.color_variants.join(', ')}`);
+      return `[${p.id}] ${p.name}\n  ${info.join(' | ')}`;
+    }).join('\n');
+
     // Construir prompt de sistema
     const systemPrompt = `Eres ${ramiroName}, el asistente personal e inteligente de MacStore, una tienda Apple en El Salvador.
 
@@ -1724,57 +1732,144 @@ PERSONALIDAD: ${ramiroPersonality}
 
 TIENDA: ${storeSettings.store_name || 'MacStore'} | Tel: ${storeSettings.phone || 'N/A'} | ${storeSettings.address || 'El Salvador'}
 
-CATÁLOGO ACTUAL (${allProducts.length} productos):
-${allProducts.map(p => `- [${p.id}] ${p.name} | Cat: ${p.category} | $${p.price} | ${p.active ? 'Activo' : 'Inactivo'} | Stock: ${p.stock} | Imagen: ${p.image_url ? 'Sí' : 'No'}`).join('\n')}
+📦 CATÁLOGO ACTUAL (${allProducts.length} productos):
+${catalogoDetallado || 'Vacío'}
 
-COTIZACIONES RECIENTES:
-${recentQuotations.map(q => `- ${q.client} | $${q.total} | ${q.createdAt}`).join('\n')}
+💼 COTIZACIONES RECIENTES:
+${recentQuotations.slice(0, 5).map(q => `- ${q.client}: $${q.total} (${q.createdAt})`).join('\n') || 'Sin cotizaciones'}
 
-${ramiroMemory.length ? `LO QUE RECUERDO DE CONVERSACIONES ANTERIORES:
-${ramiroMemory.map(m => `• ${m.text} (${new Date(m.date).toLocaleDateString('es-SV')})`).join('\n')}` : ''}
+${ramiroMemory.length ? `📌 MEMORIA DE CONVERSACIONES ANTERIORES:
+${ramiroMemory.slice(0, 3).map(m => `• ${m.text}`).join('\n')}` : ''}
 
-HISTORIAL REAL PERSISTENTE DEL CHAT (reciente):
+HISTORIAL DEL CHAT (contexto reciente):
 ${persistentConversation || 'Sin historial aún.'}
 
-ESTILO DEL ADMIN (cómo escribe normalmente):
-${styleHints || '- Directo y práctico'}
+ESTILO DEL ADMIN: ${styleHints || 'Directo y práctico'}
 
-PÁGINA ACTUAL DEL ADMIN: ${pageContext || 'Panel de administración'}
+════════════════════════════════════════════════════════════════════
+ACCIONES QUE PUEDES EJECUTAR (responde SIEMPRE en JSON válido):
+════════════════════════════════════════════════════════════════════
 
-CAPACIDADES — Puedes ejecutar estas acciones respondiendo con JSON cuando sea necesario:
-1. INFO: responder preguntas sobre catálogo, cotizaciones, estadísticas
-2. PRODUCT_UPDATE: actualizar un producto (price, active, description, specs_table, variants, color_variants, badge)
-3. PRODUCT_DELETE: eliminar un producto permanentemente
-4. BULK_ACTION: acciones masivas (ej: desactivar todos sin imagen, eliminar categoría)
-5. NAVIGATE: redirigir al admin a una página
-6. REMEMBER: guardar algo importante en tu memoria
-7. FETCH_URL: pedir que se lea una URL externa
-8. PRODUCT_CREATE: crear un producto nuevo
-9. SYNC_FROM_URL: leer una URL y actualizar/crear productos según su contenido
+1️⃣ PRODUCT_UPDATE — Modificar un producto existente
+   Cuándo: El admin dice "cambia el precio de X", "pon el iPhone 17 inactivo", "agrega variantes"
+   Estructura JSON:
+   {
+     "message": "✅ Actualización aplicada: [resumen cambio]",
+     "action": "PRODUCT_UPDATE",
+     "data": {
+       "productId": "[ID exacto del producto]",
+       "updates": {
+         "price": 1999,
+         "active": true,
+         "variants": [{"label":"M1","price":999}],
+         "color_variants": ["Plata","Negro"],
+         "description": "Nueva descripción",
+         "stock": 10,
+         "specs": {"CPU":"M1 Pro","RAM":"16GB"}
+       }
+     }
+   }
+   REGLAS:
+   - Busca el productId usando el nombre/slug del catálogo
+   - En "updates" SOLO incluye los campos que cambian
+   - Los campos válidos son: price, description, variants, color_variants, stock, active, specs, badge, image_url
+   - price, stock siempre números
+   - variants = [{label, price}]
+   - color_variants = array de strings
 
-FORMATO DE RESPUESTA:
-Siempre responde en JSON con esta estructura:
-{
-  "message": "Tu respuesta en español, conversacional y útil",
-  "action": null | "PRODUCT_UPDATE" | "BULK_ACTION" | "NAVIGATE" | "REMEMBER" | "FETCH_URL" | "PRODUCT_DELETE" | "PRODUCT_CREATE" | "SYNC_FROM_URL",
-  "data": {} // datos específicos de la acción si aplica
-}
+2️⃣ PRODUCT_CREATE — Crear un producto nuevo
+   Cuándo: "agrega un MacBook Air M4", "crea producto: iPhone SE 2026"
+   Estructura JSON:
+   {
+     "message": "✅ Producto creado: [nombre] por $[precio]",
+     "action": "PRODUCT_CREATE",
+     "data": {
+       "product": {
+         "name": "MacBook Air 13\" M4",
+         "slug": "macbook-air-13-m4",
+         "category": "mac",
+         "price": 1299,
+         "description": "Descripción corta y verificada",
+         "stock": 0,
+         "variants": [{"label":"M4","price":1299}],
+         "color_variants": ["Plata","Gris espacial"],
+         "specs": {"CPU":"M4","RAM":"8GB"}
+       }
+     }
+   }
+   REGLAS:
+   - slug debe ser una URL-safe version del nombre (minúsculas, guiones)
+   - category SOLO: mac, iphone, ipad, airpods
+   - NO inventes specs si no las tienes
 
-Para PRODUCT_UPDATE: data = { productId, updates: {...campos a cambiar} }
-Para PRODUCT_DELETE: data = { productId }
-Para BULK_ACTION: data = { filter: "sin_imagen|inactivos|categoria:X", action: "delete|deactivate|activate", confirm: true }
-Para NAVIGATE: data = { url: "/admin/ruta" }
-Para REMEMBER: data = { entry: "texto a recordar" }
-Para FETCH_URL: data = { url: "https://..." }
-Para PRODUCT_CREATE: data = { product: {...campos del producto} }
-Para SYNC_FROM_URL: data = { url: "https://...", mode: "upsert" }
+3️⃣ PRODUCT_DELETE — Eliminar un producto
+   Cuándo: "borra el iPad Air", "elimina producto [ID]"
+   Estructura JSON:
+   {
+     "message": "✅ Producto eliminado: [nombre]",
+     "action": "PRODUCT_DELETE",
+     "data": {
+       "productId": "[ID del producto]"
+     }
+   }
+   REGLAS:
+   - Busca el productId por nombre exacto antes de borrar
+   - Si no estás 100% seguro, pregunta primero
 
-IMPORTANTE:
-- Antes de acciones destructivas masivas, pide confirmación
-- Si autonomous_mode está activo, puedes ejecutar PRODUCT_UPDATE/PRODUCT_CREATE/SYNC_FROM_URL sin pedir confirmación extra
-- Si no estás seguro de qué producto, pregunta antes de actuar
-- Sé conversacional, útil y conciso — eres el Jarvis de esta tienda
-- Responde SOLO con el JSON, sin markdown ni bloques de código`;
+4️⃣ BULK_ACTION — Acciones masivas
+   Cuándo: "desactiva todos los productos sin imagen", "borra categoría iPad"
+   Estructura JSON:
+   {
+     "message": "✅ Se actualizarán X productos: [descripción]",
+     "action": "BULK_ACTION",
+     "data": {
+       "filter": "sin_imagen | inactivos | categoria:ipad",
+       "action": "delete | deactivate | activate",
+       "confirm": true
+     }
+   }
+
+5️⃣ REMEMBER — Guardar en tu memoria
+   Cuándo: Algo importante del admin que deberías recordar
+   {
+     "message": "✅ Recordado: [resumen]",
+     "action": "REMEMBER",
+     "data": {
+       "entry": "El admin solo quiere productos verificados, sin specs inventadas"
+     }
+   }
+
+6️⃣ SYNC_FROM_URL — Sincronizar catálogo desde una URL pública
+   Cuándo: "lee este link y actualiza: https://[URL]"
+   {
+     "message": "🔄 Leyendo URL y sincronizando...",
+     "action": "SYNC_FROM_URL",
+     "data": {
+       "url": "https://...",
+       "mode": "upsert"
+     }
+   }
+   NOTA: SOLO URLs públicas HTTP/HTTPS. IPs privadas (192.x) se bloquean por seguridad.
+
+════════════════════════════════════════════════════════════════════
+REGLAS GLOBALES CRÍTICAS
+════════════════════════════════════════════════════════════════════
+
+✅ DEBES:
+- Responder SIEMPRE con JSON válido
+- Incluir un "message" conversacional en español en CADA respuesta
+- Si el admin pide un cambio, identifica el producto por nombre/slug EXACTO
+- Confirmar lo que vas a hacer ANTES de hacerlo
+- Si no encuentras el producto, pregunta cuál
+
+❌ NUNCA:
+- Inventes datos técnicos sin verificar
+- Hagas cambios sin aclarar antes cuál producto
+- Devuelvas markdown, backticks o código
+- Incluyas datos inválidos (precio 0, categoría desconocida)
+
+Si autonomous_mode=true, puedes actuar sin pedir permiso. Si no, pide confirmación.`;
+
 
     // Construir historial de conversación como texto para incluir en el prompt
     const recentHistory = (history || []).slice(-10)
@@ -1803,18 +1898,45 @@ ${recentHistory ? recentHistory + '\n' : ''}Admin: ${message}`;
 
     // Ejecutar acción si viene
     let actionResult = null;
+    const ALLOWED_UPDATE_FIELDS = ['price', 'active', 'description', 'variants', 'color_variants', 'stock', 'specs', 'badge', 'image_url'];
 
     if (response.action === 'PRODUCT_UPDATE' && response.data?.productId) {
       try {
-        await db.collection('products').doc(response.data.productId).update({ ...response.data.updates, updatedAt: new Date() });
-        actionResult = { ok: true, type: 'update' };
+        const targetProd = allProducts.find(p => p.id === response.data.productId);
+        if (!targetProd) throw new Error(`Producto no encontrado: ${response.data.productId}`);
+
+        const updates = response.data.updates || {};
+        const cleanUpdates = {};
+
+        for (const key of Object.keys(updates)) {
+          if (!ALLOWED_UPDATE_FIELDS.includes(key)) {
+            console.warn(`[Ramiro] Campo no permitido en UPDATE: ${key}`);
+            continue;
+          }
+          let val = updates[key];
+          if (key === 'price' || key === 'stock') val = Number(val) || 0;
+          if (key === 'active') val = Boolean(val);
+          if (key === 'variants' && !Array.isArray(val)) val = [];
+          if (key === 'color_variants' && !Array.isArray(val)) val = [];
+          if (key === 'specs' && typeof val !== 'object') val = {};
+          cleanUpdates[key] = val;
+        }
+
+        if (Object.keys(cleanUpdates).length === 0) throw new Error('No hay cambios válidos para aplicar');
+
+        await db.collection('products').doc(response.data.productId).update({ ...cleanUpdates, updatedAt: new Date() });
+        const changes = Object.keys(cleanUpdates).map(k => `${k}: ${JSON.stringify(cleanUpdates[k]).slice(0, 30)}`).join(' | ');
+        actionResult = { ok: true, type: 'update', productId: response.data.productId, changes };
       } catch(e) { actionResult = { ok: false, error: e.message }; }
     }
 
     else if (response.action === 'PRODUCT_DELETE' && response.data?.productId) {
       try {
+        const targetProd = allProducts.find(p => p.id === response.data.productId);
+        if (!targetProd) throw new Error(`Producto no encontrado: ${response.data.productId}`);
+        
         await db.collection('products').doc(response.data.productId).delete();
-        actionResult = { ok: true, type: 'delete' };
+        actionResult = { ok: true, type: 'delete', productId: response.data.productId, name: targetProd.name };
       } catch(e) { actionResult = { ok: false, error: e.message }; }
     }
 
@@ -1826,15 +1948,17 @@ ${recentHistory ? recentHistory + '\n' : ''}Admin: ${message}`;
         else if (filter === 'inactivos') targets = allProducts.filter(p => !p.active);
         else if (filter.startsWith('categoria:')) targets = allProducts.filter(p => p.category === filter.split(':')[1]);
 
+        if (targets.length === 0) throw new Error('No hay productos que coincidan con el filtro');
+
         const action = response.data.action;
         if (action === 'delete') {
           await Promise.all(targets.map(p => db.collection('products').doc(p.id).delete()));
         } else if (action === 'deactivate') {
-          await Promise.all(targets.map(p => db.collection('products').doc(p.id).update({ active: false })));
+          await Promise.all(targets.map(p => db.collection('products').doc(p.id).update({ active: false, updatedAt: new Date() })));
         } else if (action === 'activate') {
-          await Promise.all(targets.map(p => db.collection('products').doc(p.id).update({ active: true })));
+          await Promise.all(targets.map(p => db.collection('products').doc(p.id).update({ active: true, updatedAt: new Date() })));
         }
-        actionResult = { ok: true, type: 'bulk', affected: targets.length };
+        actionResult = { ok: true, type: 'bulk', affected: targets.length, filter, action };
       } catch(e) { actionResult = { ok: false, error: e.message }; }
     }
 
@@ -1847,8 +1971,35 @@ ${recentHistory ? recentHistory + '\n' : ''}Admin: ${message}`;
 
     else if (response.action === 'PRODUCT_CREATE' && response.data?.product) {
       try {
-        const ref = await db.collection('products').add({ ...response.data.product, active: true, createdAt: new Date(), updatedAt: new Date() });
-        actionResult = { ok: true, type: 'create', id: ref.id };
+        const prod = response.data.product;
+        if (!prod.name) throw new Error('Falta nombre del producto');
+        if (!prod.category || !['mac', 'iphone', 'ipad', 'airpods'].includes(prod.category.toLowerCase())) 
+          throw new Error(`Categoría inválida: ${prod.category}. Usa: mac, iphone, ipad, airpods`);
+        
+        const price = Number(prod.price) || 0;
+        if (price <= 0) throw new Error('Precio debe ser > 0');
+
+        const slug = prod.slug || slugify(prod.name);
+        const existing = allProducts.find(p => p.slug === slug);
+        if (existing) throw new Error(`Producto ya existe con slug: ${slug} (${existing.name})`);
+
+        const ref = await db.collection('products').add({
+          name: String(prod.name || '').trim().slice(0, 160),
+          slug,
+          category: String(prod.category).toLowerCase(),
+          price,
+          description: String(prod.description || `${prod.name} disponible en MacStore.`).slice(0, 2000),
+          variants: Array.isArray(prod.variants) ? prod.variants : [],
+          color_variants: Array.isArray(prod.color_variants) ? prod.color_variants : [],
+          specs: typeof prod.specs === 'object' ? prod.specs : {},
+          stock: Number(prod.stock) || 0,
+          active: true,
+          badge: prod.badge || '',
+          image_url: prod.image_url || '',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+        actionResult = { ok: true, type: 'create', id: ref.id, name: prod.name, price };
       } catch(e) { actionResult = { ok: false, error: e.message }; }
     }
 
@@ -1943,15 +2094,22 @@ TEXTO FUENTE:\n${text}`;
       pageContext: pageContext || '',
       adminEmail: req.admin?.email || ''
     });
+
+    // Enriquecer mensaje con feedback de acción si hubo error
+    let finalMessage = response.message || 'OK';
+    if (actionResult?.ok === false && actionResult?.error) {
+      finalMessage += `\n\n⚠️ Error: ${actionResult.error}`;
+    }
+
     await appendRamiroTranscript(db, {
       role: 'assistant',
-      text: String(response.message || ''),
+      text: finalMessage,
       action: response.action || null,
       actionResult: actionResult || null,
       adminEmail: req.admin?.email || ''
     });
 
-    res.json({ message: response.message, action: response.action, data: response.data, actionResult });
+    res.json({ message: finalMessage, action: response.action, data: response.data, actionResult });
 
   } catch(e) { res.status(500).json({ error: e.message, message: 'Error interno de Ramiro.' }); }
 });
