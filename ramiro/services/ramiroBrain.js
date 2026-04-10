@@ -264,6 +264,21 @@ function buildDeterministicGuidanceDecision(userMessage = '', allProducts = [], 
         memory: { shouldRemember: false, facts: [] },
       };
     }
+
+    const fallbackRef = ref || 'ese producto';
+    return {
+      mode: 'general',
+      intent: 'deterministic_image_url_guidance_fallback',
+      confidence: 0.9,
+      requiresConfirmation: false,
+      needsClarification: false,
+      understood: `Solicitar URL para cambiar imagen de ${fallbackRef}`,
+      entity: { type: 'unknown', id: null, name: fallbackRef, filters: {}, matches: [] },
+      action: { type: 'answer', payload: {} },
+      question: null,
+      response: `Entendido. ¿Cuál es la URL de la imagen para ${fallbackRef}?`,
+      memory: { shouldRemember: false, facts: [] },
+    };
   }
 
   return null;
@@ -318,6 +333,7 @@ function buildDeterministicOperationalDecision(userMessage = '', allProducts = [
         memory: { shouldRemember: false, facts: [] },
       };
     }
+
   }
 
   const capCmd = msg.match(/(?:habilita|habilitar|activa|activar)\s+([0-9]{2,4}\s?gb)\s+para\s+(.+)$/i);
