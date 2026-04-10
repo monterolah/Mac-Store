@@ -445,6 +445,7 @@ async function loadPersistentSemanticAliases(userId) {
       const from = normalizeForMatch(m[1]).slice(0, 60);
       const to = normalizeForMatch(m[2]).slice(0, 120);
       if (!from || !to || from === to) continue;
+      if (!isSafeAliasTerm(from) || !isSafeAliasTerm(to)) continue;
       out[from] = to;
     }
     return out;
@@ -847,7 +848,14 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     const persistedAliases = await loadPersistentSemanticAliases(adminKey);
     const cachedAliases = ramiroSemanticAliases.get(adminKey) || {};
     const mergedAliases = { ...persistedAliases, ...cachedAliases };
-    ramiroSemanticAliases.set(adminKey, mergedAliases);
+    const safeMergedAliases = Object.fromEntries(
+      Object.entries(mergedAliases).filter(([from, to]) => {
+        const fromNorm = normalizeForMatch(from).slice(0, 60);
+        const toNorm = normalizeForMatch(to).slice(0, 120);
+        return fromNorm && toNorm && fromNorm !== toNorm && isSafeAliasTerm(fromNorm) && isSafeAliasTerm(toNorm);
+      })
+    );
+    ramiroSemanticAliases.set(adminKey, safeMergedAliases);
 
     // Aprendizaje explícito de equivalencias semánticas (ej: "añadir significa agregar").
     const learnedAlias = parseSemanticAliasInstruction(String(message || ''));
@@ -896,7 +904,9 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
         reason: 'Regla base de diccionario aplicada en interpretación'
       }))).catch(() => {});
     }
-    let effectiveMessage = applySemanticAliases(dictApplied.text, activeAliases);
+    // En conversación libre preservamos el texto original para evitar respuestas robóticas.
+    const baseMessageForIntent = dictApplied.hits.length ? dictApplied.text : String(message || '');
+    let effectiveMessage = applySemanticAliases(baseMessageForIntent, activeAliases);
     const userStyle = detectUserStyleLabel(effectiveMessage);
     rememberFacts(adminKey, [{ key: 'profile_tone', value: userStyle, reason: 'Estilo detectado de conversación del usuario' }]).catch(() => {});
 

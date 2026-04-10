@@ -153,6 +153,155 @@ function normalizeForIntent(text = '') {
     .trim();
 }
 
+function findProductByRef(products = [], ref = '', fallbackProduct = null) {
+  const raw = String(ref || '').trim();
+  if (!raw) return fallbackProduct || null;
+
+  const byId = products.find(p => String(p?.id || '') === raw);
+  if (byId) return byId;
+
+  const q = normalizeForIntent(raw);
+  const bySlug = products.find(p => normalizeForIntent(String(p?.slug || '')) === q);
+  if (bySlug) return bySlug;
+
+  const byExactName = products.find(p => normalizeForIntent(String(p?.name || '')) === q);
+  if (byExactName) return byExactName;
+
+  const byContains = products.find(p => normalizeForIntent(String(p?.name || '')).includes(q));
+  if (byContains) return byContains;
+
+  return fallbackProduct || null;
+}
+
+function buildDeterministicOperationalDecision(userMessage = '', allProducts = [], implicitProduct = null) {
+  const msg = String(userMessage || '').trim();
+  if (!msg) return null;
+
+  const pricePatterns = [
+    /precio\s+(?:de|del)\s+(.+?)\s+(?:a|en)\s*\$?\s*([0-9]{2,6}(?:[\.,][0-9]{1,2})?)/i,
+    /(?:pon|poner|ponle|cambia|actualiza|sube|baja)\s+(?:el\s+)?precio\s+(?:de|del)?\s*([0-9]{2,6}(?:[\.,][0-9]{1,2})?)\s+(?:a|al|para)\s+(.+?)$/i,
+    /(?:pon|poner|ponle|cambia|actualiza|sube|baja)\s+(?:el\s+)?precio\s+(?:de|del)?\s*(.+?)\s*(?:a|en|,)\s*\$?\s*([0-9]{2,6}(?:[\.,][0-9]{1,2})?)/i,
+  ];
+
+  for (const re of pricePatterns) {
+    const m = msg.match(re);
+    if (!m) continue;
+
+    let targetRef = '';
+    let price = NaN;
+    const num1 = Number(String(m[1]).replace(',', '.'));
+    const num2 = Number(String(m[2]).replace(',', '.'));
+
+    if (Number.isFinite(num1) && num1 > 0 && !Number.isFinite(num2)) {
+      price = num1;
+      targetRef = String(m[2] || '');
+    } else if (Number.isFinite(num2) && num2 > 0) {
+      price = num2;
+      targetRef = String(m[1] || '');
+    }
+
+    const targetProd = findProductByRef(allProducts, targetRef, implicitProduct);
+    if (targetProd && Number.isFinite(price) && price > 0) {
+      return {
+        mode: 'operational',
+        intent: 'deterministic_price_update',
+        confidence: 0.98,
+        requiresConfirmation: false,
+        needsClarification: false,
+        understood: `Actualizar precio de ${targetProd.name} a ${price}`,
+        entity: { type: 'product', id: targetProd.id, name: targetProd.name, filters: {}, matches: [] },
+        action: {
+          type: 'update',
+          payload: {
+            productId: targetProd.id,
+            updates: { price },
+          },
+        },
+        question: null,
+        response: `✅ actualizado precio de ${targetProd.name} a $${price}`,
+        memory: { shouldRemember: false, facts: [] },
+      };
+    }
+  }
+
+  const capCmd = msg.match(/(?:habilita|habilitar|activa|activar)\s+([0-9]{2,4}\s?gb)\s+para\s+(.+)$/i);
+  if (capCmd) {
+    const capacity = String(capCmd[1]).replace(/\s+/g, '').toUpperCase();
+    const targetRaw = String(capCmd[2] || '').trim();
+    let targetProd = findProductByRef(allProducts, targetRaw, implicitProduct);
+    let colorName = '';
+
+    if (!targetProd) {
+      const colors = ['negro', 'blanco', 'azul', 'verde', 'lavanda', 'rosa', 'rojo', 'dorado', 'plata', 'morado', 'amarillo'];
+      const targetNorm = normalizeForIntent(targetRaw);
+      const colorTail = colors.find(c => targetNorm.endsWith(` ${c}`) || targetNorm === c);
+      if (colorTail) {
+        const productPart = targetRaw.slice(0, Math.max(0, targetRaw.length - colorTail.length)).trim();
+        targetProd = findProductByRef(allProducts, productPart, implicitProduct);
+        colorName = colorTail;
+      }
+    } else {
+      const rawNorm = normalizeForIntent(targetRaw);
+      const prodNorm = normalizeForIntent(targetProd.name || '');
+      colorName = rawNorm.replace(prodNorm, '').trim();
+    }
+
+    if (targetProd) {
+      const updates = {};
+      const currentVariants = Array.isArray(targetProd.variants) ? [...targetProd.variants] : [];
+      const hasCap = currentVariants.some(v => String(v?.label || '').toUpperCase() === capacity);
+      if (!hasCap) {
+        currentVariants.push({ label: capacity, price: Number(targetProd.price) || 1, stock: 0 });
+      }
+      updates.variants = currentVariants;
+
+      const currentColors = Array.isArray(targetProd.color_variants) ? [...targetProd.color_variants] : [];
+      const hasObjectColors = currentColors.some(c => c && typeof c === 'object');
+      if (hasObjectColors && colorName) {
+        const normalizedColor = colorName.charAt(0).toUpperCase() + colorName.slice(1).toLowerCase();
+        let found = false;
+        const updatedColors = currentColors.map(c => {
+          if (!c || typeof c !== 'object') return c;
+          const nameNorm = normalizeForIntent(String(c.name || ''));
+          if (nameNorm === normalizeForIntent(normalizedColor)) {
+            found = true;
+            const caps = Array.isArray(c.available_caps) ? [...c.available_caps] : [];
+            if (!caps.some(x => String(x).toUpperCase() === capacity)) caps.push(capacity);
+            return { ...c, enabled: true, available_caps: caps };
+          }
+          return c;
+        });
+        if (!found) {
+          updatedColors.push({ name: normalizedColor, enabled: true, available_caps: [capacity] });
+        }
+        updates.color_variants = updatedColors;
+      }
+
+      return {
+        mode: 'operational',
+        intent: 'deterministic_capacity_enable',
+        confidence: 0.97,
+        requiresConfirmation: false,
+        needsClarification: false,
+        understood: `Habilitar ${capacity} en ${targetProd.name}${colorName ? ` (${colorName})` : ''}`,
+        entity: { type: 'product', id: targetProd.id, name: targetProd.name, filters: {}, matches: [] },
+        action: {
+          type: 'update',
+          payload: {
+            productId: targetProd.id,
+            updates,
+          },
+        },
+        question: null,
+        response: `✅ habilitado ${capacity}${colorName ? ` para ${colorName}` : ''} en ${targetProd.name}`,
+        memory: { shouldRemember: false, facts: [] },
+      };
+    }
+  }
+
+  return null;
+}
+
 function hasOperationalSignals(text = '') {
   const n = normalizeForIntent(text);
   if (!n) return false;
@@ -320,6 +469,14 @@ async function thinkRamiro(opts) {
   const catalogSummary = allProducts.map(p =>
     `ID=${p.id} | ${p.name} (${p.category}): $${p.price} | activo:${p.active ? 'si' : 'no'} | imagen:${p.image_url ? 'si' : 'no'}`
   ).join('\n');
+
+  const deterministicDecision = buildDeterministicOperationalDecision(userMessage, allProducts, implicitProduct);
+  if (deterministicDecision) {
+    return {
+      decision: deterministicDecision,
+      legacy: translateBrainToLegacy(deterministicDecision),
+    };
+  }
 
   // Atajo conversacional por defecto: cualquier mensaje no operacional va por respuesta natural.
   if (!isLikelyOperationalMessage(userMessage)) {
