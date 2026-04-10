@@ -152,7 +152,19 @@ function isLikelyOperationalIntent(text = '') {
   const verbTokens = Object.values(verbos).flat();
   const systemTokens = Object.values(sistema).flat();
   const mathTokens = Object.values(matematicas).flat();
-  return hasAnyStem(normalized, [...verbTokens, ...systemTokens, ...mathTokens, 'stock', 'catalogo', 'catálogo', 'url', 'link']);
+
+  if (hasAnyStem(normalized, [...verbTokens, ...systemTokens, ...mathTokens, 'stock', 'catalogo', 'catálogo', 'url', 'link'])) {
+    return true;
+  }
+
+  // Parafraseos comunes que no siempre coinciden exacto con los diccionarios base.
+  if (/(import|sincron|catalog|catalogo|catálogo).*(url|link|enlace|productos?)/i.test(normalized)) return true;
+  if (/(te\s+paso).*(url|link|enlace).*(catalog|catalogo|catálogo|productos?)/i.test(normalized)) return true;
+  if (/(quiero\s+cambiar|cambiar|actualizar|poner).*(imagen|foto)/i.test(normalized)) return true;
+  if (/(pon|ponle|agrega|agregale|anade|añade|actualiza).*(informacion|información|info|detalles|ficha|specs)/i.test(normalized)) return true;
+  if (/(de\s+que\s+material|de\s+qué\s+material|de\s+que\s+esta\s+hecho|de\s+qué\s+está\s+hecho)/i.test(normalized)) return true;
+
+  return false;
 }
 
 function hasAmbiguousReferenceIntent(text = '') {
