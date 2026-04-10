@@ -2,7 +2,7 @@
 
 const https = require('https');
 const http = require('http');
-const { load: cheerioLoad } = require('cheerio');
+// No external HTML parsing - use regex to avoid File API dependency (cheerio → undici → File error)
 
 const BLOCKED_HOSTS = new Set([
   'localhost', '127.0.0.1', '0.0.0.0', '::1',
@@ -54,34 +54,47 @@ async function fetchHtml(url) {
  */
 async function readUrlContent(url) {
   const html = await fetchHtml(url);
-  const $ = cheerioLoad(html);
 
-  // Remover elementos no informativos
-  $('script, style, noscript, svg, head > *:not(title):not(meta)').remove();
+  // Remove script, style, noscript, svg tags
+  let cleaned = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
+    .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, '');
 
-  const title = $('title').first().text().trim();
-  const metaDesc = $('meta[name="description"]').attr('content')
-    || $('meta[property="og:description"]').attr('content')
-    || '';
+  // Extract title
+  const titleMatch = cleaned.match(/<title[^>]*>([^<]*)<\/title>/i);
+  const title = titleMatch ? titleMatch[1].trim() : '';
 
+  // Extract meta description
+  const metaDescMatch = cleaned.match(/<meta\s+name=["']description["']\s+content=["']([^"']*)["']/i)
+    || cleaned.match(/<meta\s+property=["']og:description["']\s+content=["']([^"']*)["']/i);
+  const metaDesc = metaDescMatch ? metaDescMatch[1].trim() : '';
+
+  // Extract headings
   const headings = [];
-  $('h1, h2, h3').each((_, el) => {
-    const t = $(el).text().trim();
-    if (t) headings.push(t);
-  });
+  const headingMatches = cleaned.matchAll(/<h[1-3][^>]*>([^<]*)<\/h[1-3]>/gi);
+  for (const match of headingMatches) {
+    const text = match[1].trim().replace(/&#?\w+;/g, '');
+    if (text) headings.push(text);
+  }
 
+  // Extract paragraphs
   const paragraphs = [];
-  $('p').each((_, el) => {
-    const t = $(el).text().trim();
-    if (t.length >= 30) paragraphs.push(t);
-  });
+  const paraMatches = cleaned.matchAll(/<p[^>]*>([^<]*)<\/p>/gi);
+  for (const match of paraMatches) {
+    const text = match[1].trim().replace(/&#?\w+;/g, '');
+    if (text.length >= 30) paragraphs.push(text);
+  }
 
+  // Extract images
   const images = [];
-  $('img').each((_, el) => {
-    const src = $(el).attr('src') || $(el).attr('data-src') || '';
-    const alt = $(el).attr('alt') || '';
+  const imgMatches = cleaned.matchAll(/<img\b[^>]*src=["']([^"']*?)["'][^>]*(?:alt=["']([^"']*?)["'])?/gi);
+  for (const match of imgMatches) {
+    const src = match[1];
+    const alt = match[2] || '';
     if (src && !src.startsWith('data:')) images.push({ src, alt });
-  });
+  }
 
   const rawText = [title, metaDesc, ...headings, ...paragraphs]
     .join('\n')
@@ -105,42 +118,51 @@ async function readUrlContent(url) {
  */
 async function extractProductsFromUrl(url) {
   const html = await fetchHtml(url);
-  const $ = cheerioLoad(html);
   const products = [];
 
-  const PRODUCT_SELECTORS = [
-    '.product', '.product-card', '.card', '[data-product]',
-    '[itemtype*="Product"]', 'article.item', 'li.product',
-    '.item-product', '.catalog-item',
-  ];
+  // Remove scripts and styles first
+  const cleaned = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
 
-  $(PRODUCT_SELECTORS.join(', ')).each((_, el) => {
-    const root = $(el);
+  // Find all potential product containers (.product, .card, [data-product], etc)
+  const containerRegex = /<(div|article|li|section)[^>]*(product|card|item|catalog)[^>]*>([^<]*(?:<(?!\/\1)[^<]*)*)<\/\1>/gi;
+  const containers = [...cleaned.matchAll(containerRegex)];
 
-    const name = root.find([
-      'h1', 'h2', 'h3', 'h4',
-      '.title', '.product-title', '.name', '.product-name',
-      '[itemprop="name"]',
-    ].join(', ')).first().text().trim();
+  for (const containerMatch of containers) {
+    const containerHtml = containerMatch[0];
 
-    const priceRaw = root.find([
-      '.price', '.product-price', '[class*="price"]',
-      '[itemprop="price"]', '.cost', '.valor',
-    ].join(', ')).first().text().trim();
+    // Extract name from heading or text
+    const nameMatch = containerHtml.match(/<(?:h[1-4]|div|span)[^>]*(?:title|name|product)[^>]*>([^<]+)<\/(?:h[1-4]|div|span)>/i)
+      || containerHtml.match(/<h[1-4][^>]*>([^<]+)<\/h[1-4]>/i)
+      || containerHtml.match(/<(?:span|a)[^>]*>([^<]{2,80})<\/(?:span|a)>/i);
+    const name = nameMatch ? nameMatch[1].trim().replace(/&#?\w+;/g, '') : null;
 
-    const image = root.find('img').first().attr('src')
-      || root.find('img').first().attr('data-src')
-      || root.find('img').first().attr('data-lazy-src')
-      || null;
+    // Extract price using price patterns
+    const priceMatch = containerHtml.match(/\$?\s*([0-9]+(?:[.,][0-9]{2})?)\s*(?:USD|AUD|€|£)?/i)
+      || containerHtml.match(/price[^>]*>([^<$]*\d+[^<]*)<\//i);
+    const priceRaw = priceMatch ? priceMatch[1].trim() : '';
 
-    const href = root.find('a').first().attr('href') || null;
-    const link = href ? new URL(href, url).href : null;
+    // Extract image
+    const imgMatch = containerHtml.match(/<img\b[^>]*src=["']([^"']*?)["']/i);
+    const image = imgMatch && !imgMatch[1].startsWith('data:') ? imgMatch[1] : null;
+
+    // Extract link
+    const linkMatch = containerHtml.match(/<a\b[^>]*href=["']([^"']*?)["']/i);
+    let link = null;
+    if (linkMatch) {
+      try {
+        link = new URL(linkMatch[1], url).href;
+      } catch {
+        link = null;
+      }
+    }
 
     if (name && name.length >= 2 && (priceRaw || image)) {
       const priceNum = parseFloat(String(priceRaw).replace(/[^0-9.]/g, '')) || null;
       products.push({ name, price: priceNum, priceRaw, image, link });
     }
-  });
+  }
 
   // Deduplicar por nombre+precio
   const seen = new Set();
