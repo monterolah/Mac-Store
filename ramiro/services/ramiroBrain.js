@@ -99,18 +99,19 @@ function buildFallbackDecision(userMessage, question = null, rawResponse = null)
     fallbackText = question;
   } else {
     const msgLower = String(userMessage || '').toLowerCase();
+    const isOperational = isLikelyOperationalMessage(userMessage);
     const hasPriceSignal = msgLower.includes('precio')
       || /\$\s*[0-9]{2,6}/.test(msgLower)
       || /[0-9]{2,6}\s*(usd|dolares|dólares)/.test(msgLower);
-    if (hasPriceSignal) {
+    if (isOperational && hasPriceSignal) {
       fallbackText = 'Disculpa, no pude cerrar bien el cambio de precio. Dime el producto y el monto, por ejemplo: cambiar precio de iPhone 15 a $899.';
-    } else if (msgLower.includes('imagen') || msgLower.includes('foto') || msgLower.match(/https?:\/\//)) {
+    } else if (isOperational && (msgLower.includes('imagen') || msgLower.includes('foto') || msgLower.match(/https?:\/\//))) {
       fallbackText = 'Disculpa, el cambio de imagen quedó incompleto. Dime primero el producto y luego me mandas el URL.';
-    } else if (msgLower.includes('crear') || msgLower.includes('nuevo')) {
+    } else if (isOperational && (msgLower.includes('crear') || msgLower.includes('nuevo'))) {
       fallbackText = 'Para crear el producto necesito al menos nombre, categoría y precio. Si quieres, te lo voy pidiendo paso a paso.';
-    } else if (isLikelyGeneralConversation(userMessage)) {
+    } else if (!isOperational || isLikelyGeneralConversation(userMessage)) {
       fallbackText = buildOfflineGeneralConversationText(userMessage)
-        || 'Te entendí como conversación normal, pero esta respuesta salió mal internamente. Vuelve a decírmelo y te respondo directo.';
+        || 'Te entendí. Si quieres, seguimos conversando normal; también puedo ayudarte con productos cuando me lo pidas.';
     } else {
       fallbackText = 'Entendí que quieres hacer un cambio, pero me faltó contexto para ejecutarlo. Dime qué producto quieres tocar y qué campo quieres cambiar.';
     }
@@ -287,9 +288,8 @@ async function thinkRamiro(opts) {
     `ID=${p.id} | ${p.name} (${p.category}): $${p.price} | activo:${p.active ? 'si' : 'no'} | imagen:${p.image_url ? 'si' : 'no'}`
   ).join('\n');
 
-  // Atajo conversacional: si el mensaje claramente NO es operacional, evitar el brain JSON
-  // y responder directamente con un prompt natural para mayor coherencia y temperatura libre.
-  if (isLikelyGeneralConversation(userMessage) && !isLikelyOperationalMessage(userMessage)) {
+  // Atajo conversacional por defecto: cualquier mensaje no operacional va por respuesta natural.
+  if (!isLikelyOperationalMessage(userMessage)) {
     const conversationalPrompt = `Eres Ramiro, asistente de ${storeName || 'MacStore'}.
 Responde en español, de forma natural, directa y coherente con lo que el usuario dice.
 No uses JSON. No menciones reglas internas. Responde exactamente sobre el tema del mensaje.
