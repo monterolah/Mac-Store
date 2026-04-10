@@ -329,18 +329,22 @@ function hasOperationalSignals(text = '') {
 
 function buildHumanFallbackReply(userMessage = '') {
   const topic = String(userMessage || '').replace(/\s+/g, ' ').trim().slice(0, 140);
-  if (!topic) return 'Te leo. Cuéntame un poco más y te respondo sin rodeos.';
+  const n = normalizeForIntent(topic);
+  if (!topic) return 'Aquí estoy. Dime el tema o el cambio que quieres y te respondo directo.';
 
-  const variants = [
-    `Te leo. Sobre "${topic}", te respondo directo.`,
-    `Entiendo tu punto sobre "${topic}". Vamos al grano.`,
-    `Buen tema: "${topic}". Te doy una respuesta clara.`,
-    `Va, hablemos de "${topic}". Respuesta directa:`
-  ];
+  if (/^(si|sí|ok|dale|va|aja|aj[aá]|correcto|claro)\s*[.!?]*$/i.test(topic)) {
+    return 'Sí. Dime qué quieres que haga o de qué tema quieres que te hable, y te respondo directo.';
+  }
 
-  let hash = 0;
-  for (let i = 0; i < topic.length; i += 1) hash = (hash + topic.charCodeAt(i)) % 997;
-  return variants[hash % variants.length];
+  if (/^(?:me\s+)?(?:puedes\s+)?ayuda(?:r|s|rme|me)?\s*[.!?]*$/i.test(n) || /^(ayuda|ayudame|ayudame)\s*[.!?]*$/i.test(n)) {
+    return 'Aquí estoy para ayudarte de verdad. Puedo buscar productos, cambiar precio, imagen, colores o stock, activar o desactivar, crear productos, borrar con confirmación y ayudarte con cotizaciones. Dime qué necesitas y lo hago.';
+  }
+
+  if (/habla(?:me)?\s+de|cuentame\s+de|explica(?:me)?\s+/i.test(n)) {
+    return `Claro. Si quieres, te hablo de ${topic.replace(/^(habla(?:me)?\s+de|cuentame\s+de|explica(?:me)?\s+)/i, '').trim()} en corto y directo.`;
+  }
+
+  return `Aquí estoy. Si quieres, te respondo directo sobre "${topic}" o lo aterrizamos a algo concreto.`;
 }
 
 function isLikelyGeneralConversation(text = '') {
@@ -382,6 +386,18 @@ function buildOfflineGeneralConversationText(userMessage = '') {
       return 'Si hablas del Mundial 2026, Argentina sigue siendo candidata fuerte por estructura y experiencia, pero en torneos cortos el momento del equipo y los cruces pesan mucho.';
     }
     return 'Si quieres, te doy una lectura directa del Mundial: favoritos, cruces y qué selección llega mejor.';
+  }
+
+  if (n.includes('juegos olimpicos') || n.includes('juegos olímpicos') || n.includes('olimpiadas') || n.includes('olimpicos') || n.includes('olímpicos')) {
+    return 'Claro. Los Juegos Olímpicos son el principal evento deportivo multidisciplinario del mundo. Reúnen atletas de muchos países en competencias como atletismo, natación, gimnasia, fútbol, baloncesto y más. Se celebran normalmente cada cuatro años en versión de verano, y también existen los Juegos Olímpicos de invierno para deportes sobre nieve y hielo. Más allá de las medallas, representan competencia internacional, preparación de alto nivel y proyección cultural del país sede. Si quieres, te puedo hablar de su historia, de cómo funcionan o de una edición específica.';
+  }
+
+  if (/^(si|sí|ok|dale|va|aja|aj[aá]|correcto|claro)\s*[.!?]*$/i.test(String(userMessage || '').trim())) {
+    return 'Sí. Dime qué quieres que haga o qué tema quieres que te explique y te respondo directo.';
+  }
+
+  if (/^(?:me\s+)?(?:puedes\s+)?ayuda(?:r|s|rme|me)?\s*[.!?]*$/i.test(String(userMessage || '').trim())) {
+    return 'Aquí estoy para ayudarte de verdad. Dime qué necesitas: conversación libre, productos, precios, imágenes, colores, stock o cotizaciones.';
   }
 
   const topic = String(userMessage || '').replace(/\s+/g, ' ').trim().slice(0, 120);
