@@ -5,7 +5,7 @@ const { requireAdminAPI } = require('../middleware/auth');
 const { thinkRamiro } = require('../ramiro/services/ramiroBrain');
 const { readUrlContent, extractProductsFromUrl } = require('../ramiro/services/ramiroUrlReader');
 const { syncProductsFromArray } = require('../ramiro/services/ramiroCatalogTools');
-const { learnPattern } = require('../ramiro/services/ramiroMemory');
+const { learnPattern, rememberFacts, getUserMemory } = require('../ramiro/services/ramiroMemory');
 const { buildProjectContextSnapshot } = require('../ramiro/services/ramiroProjectContext');
 const { runRamiroTool } = require('../ramiro/services/ramiroAgent');
 
@@ -23,6 +23,7 @@ const ramiroPendingProductDraft = new Map();
 const RAMIRO_DRAFT_TTL_MS = 10 * 60 * 1000;
 
 const ramiroLearnedPatterns = new Map();
+const ramiroSemanticAliases = new Map();
 
 function cleanText(value, max = 5000) {
   return String(value || '').trim().slice(0, max);
@@ -218,6 +219,62 @@ function getQuickConversationalReply(message = '', admin = {}) {
   }
 
   return null;
+}
+
+function parseSemanticAliasInstruction(message = '') {
+  const raw = cleanText(message, 300);
+  if (!raw) return null;
+
+  let m = raw.match(/^(?:para\s+mi\s+)?(.+?)\s+significa\s+(.+)$/i)
+    || raw.match(/^cuando\s+digo\s+(.+?)\s+(?:me\s+refiero\s+a|es)\s+(.+)$/i)
+    || raw.match(/^(.+?)\s+equivale\s+a\s+(.+)$/i);
+  if (!m) return null;
+
+  const from = normalizeForMatch(m[1] || '').slice(0, 60);
+  const to = normalizeForMatch(m[2] || '').slice(0, 120);
+  if (!from || !to || from === to) return null;
+  if (from.length < 3 || to.length < 3) return null;
+
+  return { from, to };
+}
+
+function escapeRegExp(value = '') {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function applySemanticAliases(message = '', aliases = {}) {
+  let out = String(message || '');
+  const entries = Object.entries(aliases || {})
+    .filter(([k, v]) => String(k || '').trim() && String(v || '').trim())
+    .sort((a, b) => b[0].length - a[0].length);
+
+  for (const [from, to] of entries) {
+    const re = new RegExp(`\\b${escapeRegExp(from)}\\b`, 'gi');
+    out = out.replace(re, to);
+  }
+  return out;
+}
+
+async function loadPersistentSemanticAliases(userId) {
+  try {
+    const memory = await getUserMemory(userId);
+    const prefs = memory?.preferences || {};
+    const out = {};
+
+    for (const [key, entry] of Object.entries(prefs)) {
+      if (!String(key).startsWith('alias_')) continue;
+      const rawValue = String(entry?.value || '');
+      const m = rawValue.match(/^\s*(.+?)\s*=>\s*(.+?)\s*$/);
+      if (!m) continue;
+      const from = normalizeForMatch(m[1]).slice(0, 60);
+      const to = normalizeForMatch(m[2]).slice(0, 120);
+      if (!from || !to || from === to) continue;
+      out[from] = to;
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 function getProductIdFromPageContext(pageContext) {
@@ -508,6 +565,48 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     const adminKey = String(req.admin?.email || req.admin?.id || 'admin').toLowerCase();
     const incomingConversationId = sanitizeConversationId(req.body?.conversationId);
     const conversationId = incomingConversationId || generateConversationId(adminKey);
+
+    // Cargar equivalencias semánticas persistidas del usuario para aplicar aprendizaje entre sesiones.
+    const persistedAliases = await loadPersistentSemanticAliases(adminKey);
+    const cachedAliases = ramiroSemanticAliases.get(adminKey) || {};
+    const mergedAliases = { ...persistedAliases, ...cachedAliases };
+    ramiroSemanticAliases.set(adminKey, mergedAliases);
+
+    // Aprendizaje explícito de equivalencias semánticas (ej: "añadir significa agregar")
+    const learnedAlias = parseSemanticAliasInstruction(String(message || ''));
+    if (learnedAlias) {
+      const currentAliases = ramiroSemanticAliases.get(adminKey) || {};
+      currentAliases[learnedAlias.from] = learnedAlias.to;
+      ramiroSemanticAliases.set(adminKey, currentAliases);
+
+      rememberFacts(adminKey, [{
+        key: `alias_${learnedAlias.from.replace(/\s+/g, '_').slice(0, 40)}`,
+        value: `${learnedAlias.from} => ${learnedAlias.to}`,
+        reason: 'Equivalencia semántica definida por el usuario'
+      }]).catch(() => {});
+
+      const aliasMsg = `Entendido. Aprendí esta equivalencia: "${learnedAlias.from}" = "${learnedAlias.to}". Desde ahora la aplicaré automáticamente.`;
+      await appendRamiroTranscript(db, {
+        role: 'user',
+        text: String(message || ''),
+        pageContext: pageContext || '',
+        conversationId,
+        adminEmail: req.admin?.email || ''
+      });
+      await appendRamiroTranscript(db, {
+        role: 'assistant',
+        text: aliasMsg,
+        conversationId,
+        action: null,
+        actionResult: { ok: true, type: 'memory' },
+        adminEmail: req.admin?.email || ''
+      });
+      return res.json({ ok: true, message: aliasMsg, conversationId, actionResult: { ok: true, type: 'memory' } });
+    }
+
+    const activeAliases = ramiroSemanticAliases.get(adminKey) || {};
+    const effectiveMessage = applySemanticAliases(String(message || ''), activeAliases);
+
     const pendingConfirmation = ramiroPendingConfirmations.get(adminKey);
     if (pendingConfirmation && pendingConfirmation.expiresAt < Date.now()) {
       ramiroPendingConfirmations.delete(adminKey);
@@ -580,7 +679,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     const projectContext = buildProjectContextSnapshot(path.join(__dirname, '..'));
 
     // Atajos conversacionales estables: evita respuestas genéricas cuando el modelo falle.
-    const quickReply = getQuickConversationalReply(message, req.admin);
+    const quickReply = getQuickConversationalReply(effectiveMessage, req.admin);
     if (quickReply) {
       await appendRamiroTranscript(db, {
         role: 'user',
@@ -608,7 +707,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
 
     try {
       const brainResult = await thinkRamiro({
-        userMessage: String(message || ''),
+        userMessage: String(effectiveMessage || ''),
         userId: adminKey,
         storeName: storeSettings.store_name || 'MacStore',
         personality: ramiroPersonality,
@@ -807,24 +906,24 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     // Fallback determinista: si Gemini no ejecuta acción o devuelve acción inválida, interpretamos comandos frecuentes
     const invalidUpdateAction = response.action === 'PRODUCT_UPDATE' && (!response.data?.productId || !response.data?.updates || !Object.keys(response.data.updates || {}).length);
     const invalidCreateAction = response.action === 'PRODUCT_CREATE' && !response.data?.product?.name;
-    const hasCapacityEnableCommand = /(?:habilita|habilitar|activa|activar)\s+[0-9]{2,4}\s?gb\s+para\s+/i.test(String(message || ''));
+    const hasCapacityEnableCommand = /(?:habilita|habilitar|activa|activar)\s+[0-9]{2,4}\s?gb\s+para\s+/i.test(String(effectiveMessage || ''));
     const hasNaturalBrainResponse = Boolean(String(response.message || '').trim())
       && !isTemplatePlaceholder
       && !isGenericAssistantPrompt(response.message);
     const brainAlreadyHandledConversation = hasNaturalBrainResponse
       && !response.action
-      && !isLikelyOperationalIntent(message || '');
+      && !isLikelyOperationalIntent(effectiveMessage || '');
 
     const shouldForceDeterministic = response.action === 'INFO'
       || invalidUpdateAction
       || invalidCreateAction
       || hasCapacityEnableCommand
       || isTemplatePlaceholder
-      || (!brainAlreadyHandledConversation && (!response.action || isLikelyOperationalIntent(message || '') || !hasNaturalBrainResponse));
+      || (!brainAlreadyHandledConversation && (!response.action || isLikelyOperationalIntent(effectiveMessage || '') || !hasNaturalBrainResponse));
 
     if (shouldForceDeterministic) {
       response = { message: response.message || '', action: null, data: null };
-      const msg = String(message || '').trim();
+      const msg = String(effectiveMessage || '').trim();
       const msgNorm = normalizeForMatch(msg);
       const adminDisplayName = getAdminDisplayName(req.admin);
       const targetFromRef = (ref) => resolveTargetProduct(allProducts, ref, implicitTargetProduct);
@@ -1578,7 +1677,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     }
 
     // Guardrails por intención: evita que Gemini meta cambios no pedidos
-    const userMsg = String(message || '');
+    const userMsg = String(effectiveMessage || '');
     const userMsgNorm = normalizeForMatch(userMsg);
 
     // Si el comando es de imagen y la respuesta no trae image_url, forzamos update determinista de imagen
@@ -1625,7 +1724,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     }
 
     // Si el usuario está reclamando error, nunca dispares acciones destructivas en esa misma frase.
-    const complaintGuard = /(equivoc|no era|incorrect|mal|error)/i.test(normalizeForMatch(String(message || '')));
+    const complaintGuard = /(equivoc|no era|incorrect|mal|error)/i.test(normalizeForMatch(String(effectiveMessage || '')));
     if (complaintGuard && (response.action === 'PRODUCT_DELETE' || response.action === 'BULK_ACTION' || response.action === 'SYNC_FROM_URL')) {
       response = {
         message: 'Entendido, no ejecuto más borrados por ahora. Dime cuál producto exacto quieres conservar y cuál eliminar.',
@@ -1636,7 +1735,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
 
     // Si el admin confirma una acción sensible pendiente, la reutilizamos tal cual.
     const freshPending = ramiroPendingConfirmations.get(adminKey);
-    if (isExplicitConfirmation(String(message || '')) && freshPending && freshPending.expiresAt >= Date.now()) {
+    if (isExplicitConfirmation(String(effectiveMessage || '')) && freshPending && freshPending.expiresAt >= Date.now()) {
       response = {
         ...freshPending.response,
         message: freshPending.response?.message || 'Confirmado. Ejecutando acción pendiente.'
@@ -1649,7 +1748,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
 
     // Confirmación obligatoria para acciones riesgosas o plan marcado como riesgoso.
     const mustConfirmRisk = isPotentiallyRiskyAction(response.action, response.data);
-    if (mustConfirmRisk && !isExplicitConfirmation(String(message || ''))) {
+    if (mustConfirmRisk && !isExplicitConfirmation(String(effectiveMessage || ''))) {
       ramiroPendingConfirmations.set(adminKey, {
         response: {
           action: response.action,
