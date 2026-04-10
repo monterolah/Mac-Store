@@ -272,9 +272,10 @@ function getQuickConversationalReply(message = '', admin = {}) {
   const n = normalizeForMatch(msg);
   if (!n) return null;
 
-  const helpIntent = /^(?:me\s+)?(?:puedes\s+)?ayudar(?:me)?\s*[.!?]*$/i.test(n)
+  const helpIntent = /^(?:me\s+)?(?:puedes\s+)?ayuda(?:r|s|rme|me)?\s*[.!?]*$/i.test(n)
     || /^(?:si\s+)?(?:por\s+favor\s+)?(?:me\s+)?puedes\s+ayudar\s*[.!?]*$/i.test(n)
-    || /^(?:ayuda|ayudame|ay[úu]dame)\s*[.!?]*$/i.test(n);
+    || /^(?:ayuda|ayudame|ay[úu]dame|me\s+ayudas?)\s*[.!?]*$/i.test(n)
+    || hasAnyStem(n, ['ayud']) && hasAnyStem(n, ['me', 'puedes', 'ayudas', 'ayudar']);
   if (helpIntent) {
     return 'Aquí estoy para ayudarte de verdad. Puedo: 1) buscar productos, 2) cambiar precio, imagen, colores o stock, 3) activar/desactivar, 4) crear o borrar con confirmación y 5) apoyarte con cotizaciones. Dime qué quieres hacer y lo ejecuto ya.';
   }
