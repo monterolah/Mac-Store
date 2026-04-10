@@ -1401,7 +1401,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
       if (!response.action) {
         const createHelpIntent = hasAnyStem(msgNorm, ['como', 'ayuda', 'explica', 'dime'])
           && hasAnyStem(msgNorm, ['anad', 'anadir', 'agreg', 'cre', 'sub'])
-          && hasAnyStem(msgNorm, ['producto', 'catalogo', 'articulo']);
+          && hasAnyStem(msgNorm, ['producto', 'catalogo', 'articulo', 'iphone', 'ipad', 'mac', 'airpods']);
         if (createHelpIntent) {
           response = {
             message: 'Para agregar un producto, escribime el nombre y el precio en una sola frase. Ejemplos: "añade iPhone Air a 1349", "crea MacBook Air M2 por 999" o "agrega iPad Mini $699". Si quieres, también puedes darme imagen, colores, variantes o descripción en el mismo mensaje o después.',
@@ -1436,6 +1436,71 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
         }
       }
 
+      if (!response.action) {
+        const infoUpdateIntent = /(pon|poner|ponle|agrega|agregar|agregale|anade|añade|actualiza|completa).*(informacion|información|info|descripcion|descripción|detalles|ficha|specs)/i.test(msgNorm);
+        if (infoUpdateIntent) {
+          const targetProd = findProductMentionInText(allProducts, msg) || implicitTargetProduct;
+          if (targetProd) {
+            response = {
+              message: `Perfecto. Para actualizar la información de ${targetProd.name}, pégame aquí la ficha técnica o el texto completo y te lo estructuro en descripción, specs, variantes y colores.` ,
+              action: null,
+              data: null
+            };
+          } else {
+            response = {
+              message: 'Claro. Dime primero el nombre exacto del producto y luego te pido la información para completarlo.',
+              action: null,
+              data: null
+            };
+          }
+        }
+      }
+
+      if (!response.action) {
+        const materialIntent = /(de\s+que\s+material|de\s+qué\s+material|que\s+material|qué\s+material|material\s+(?:es|tiene|del))/i.test(msgNorm);
+        if (materialIntent) {
+          const targetProd = findProductMentionInText(allProducts, msg) || implicitTargetProduct;
+          if (targetProd) {
+            const specs = targetProd.specs;
+            let materialVal = '';
+
+            if (Array.isArray(specs)) {
+              for (const row of specs) {
+                const label = normalizeForMatch(row?.label || '');
+                const value = cleanText(row?.value || '', 200);
+                if (!value) continue;
+                if (/(material|chasis|cuerpo|body|frame|acabado)/i.test(label)) {
+                  materialVal = value;
+                  break;
+                }
+              }
+            } else if (specs && typeof specs === 'object') {
+              for (const [k, v] of Object.entries(specs)) {
+                const key = normalizeForMatch(k || '');
+                const value = cleanText(v, 200);
+                if (!value) continue;
+                if (/(material|chasis|cuerpo|body|frame|acabado)/i.test(key)) {
+                  materialVal = value;
+                  break;
+                }
+              }
+            }
+
+            response = materialVal
+              ? {
+                message: `${targetProd.name}: material registrado en catálogo → ${materialVal}.`,
+                action: null,
+                data: null
+              }
+              : {
+                message: `No tengo el material documentado para ${targetProd.name} en el catálogo actual. Si quieres, lo agregamos ahora con "ponle información a ${targetProd.name}" y me pegas la ficha.`,
+                action: null,
+                data: null
+              };
+          }
+        }
+      }
+
       // -2) Saludo o mensaje genérico sin contexto de acción
       if (!response.action) {
         const greetIntent = /^(ayuda(me)?|me ayudas?|hola+|hey+y*( ramiro)?|buenas?|qu[eé] puedes?|para qu[eé] sirves?|qu[eé] haces?)\s*[.!?]*$/i.test(msg.trim());
@@ -1460,6 +1525,19 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
             message: 'Preparé una sincronización completa desde el enlace indicado.',
             action: 'SYNC_FROM_URL',
             data: { url: sourceUrl }
+          };
+        }
+      }
+
+      if (!response.action) {
+        const asksCatalogFromUrl = /(mira|lee|extrae|import|sincroniz|trae).*(catalogo|catálogo|productos?)/i.test(msgNorm)
+          || /(catalogo|catálogo).*(url|enlace|link)/i.test(msgNorm);
+        const hasUrl = /https?:\/\/\S+/i.test(msg);
+        if (asksCatalogFromUrl && !hasUrl) {
+          response = {
+            message: 'Pásame la URL completa del catálogo y lo reviso. Debe ser una URL pública (no localhost ni IP privada).',
+            action: null,
+            data: null
           };
         }
       }
@@ -1742,6 +1820,12 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
       if (!response.action) {
         const onlyUrl = msg.match(/^\s*(https?:\/\/\S+)\s*$/i);
         const imagePending = ramiroPendingImageUpdate.get(adminKey);
+        const lastUserText = Array.isArray(history)
+          ? String(([...history].reverse().find(h => h && h.role === 'user' && h.text) || {}).text || '')
+          : '';
+        const lastUserNorm = normalizeForMatch(lastUserText);
+        const pendingCatalogIntent = /(mira|lee|extrae|import|sincroniz|trae).*(catalogo|catálogo|productos?)/i.test(lastUserNorm)
+          || /(catalogo|catálogo).*(url|enlace|link)/i.test(lastUserNorm);
         let fallbackPendingProduct = null;
         if (imagePending) {
           fallbackPendingProduct = resolveProductByIdOrSlug(allProducts, imagePending.productId)
@@ -1761,11 +1845,37 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
           };
           ramiroPendingImageUpdate.delete(adminKey);
         } else if (onlyUrl && !fallbackPendingProduct) {
-          response = {
-            message: 'Recibí la URL, pero no tengo una actualización de imagen pendiente. Dime primero el producto (por ejemplo: "ponle imagen a los AirPods 4") y luego me mandas el link.',
-            action: null,
-            data: null,
-          };
+          if (pendingCatalogIntent) {
+            const sourceUrl = String(onlyUrl[1] || '').replace(/[),.;]+$/, '');
+            let parsedUrl = null;
+            try { parsedUrl = new URL(sourceUrl); } catch {}
+
+            if (!parsedUrl) {
+              response = {
+                message: 'La URL no es válida. Envíame una URL completa (https://...) para revisar el catálogo.',
+                action: null,
+                data: null,
+              };
+            } else if (isBlockedPrivateHost(parsedUrl.hostname)) {
+              response = {
+                message: 'No puedo leer URLs privadas/locales por seguridad (localhost, 192.168.x.x, 10.x.x.x). Si quieres que lo lea, publícalo con una URL pública (por ejemplo ngrok/Cloudflare Tunnel) y me la envías.',
+                action: null,
+                data: null,
+              };
+            } else {
+              response = {
+                message: 'Preparé una sincronización completa desde el enlace indicado.',
+                action: 'SYNC_FROM_URL',
+                data: { url: sourceUrl },
+              };
+            }
+          } else {
+            response = {
+              message: 'Recibí la URL, pero no tengo una actualización de imagen pendiente. Dime primero el producto (por ejemplo: "ponle imagen a los AirPods 4") y luego me mandas el link.',
+              action: null,
+              data: null,
+            };
+          }
         }
       }
 
