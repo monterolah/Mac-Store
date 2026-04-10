@@ -27,6 +27,8 @@ console.log('ADMIN_EMAIL:', process.env.ADMIN_EMAIL);
 console.log('ADMIN_PASSWORD existe:', !!process.env.ADMIN_PASSWORD);
 console.log('JWT_SECRET existe:', !!process.env.JWT_SECRET);
 console.log('SESSION_SECRET existe:', !!process.env.SESSION_SECRET);
+console.log('GOOGLE_AI_API_KEY existe:', !!process.env.GOOGLE_AI_API_KEY);
+console.log('GEMINI_API_KEY existe:', !!process.env.GEMINI_API_KEY);
 
 function ensureSecret(name, fallback) {
   const value = process.env[name];

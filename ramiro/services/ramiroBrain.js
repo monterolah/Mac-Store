@@ -5,7 +5,6 @@ const { buildRamiroSystemPrompt } = require('../config/ramiroSystemPrompt');
 const { safeJsonParse, translateBrainToLegacy } = require('../utils/ramiroHelpers');
 const { getUserMemory, rememberFacts, formatMemoryForPrompt } = require('./ramiroMemory');
 
-const GEMINI_API_KEY = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY || '';
 const CANDIDATE_MODELS = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
@@ -13,11 +12,18 @@ const CANDIDATE_MODELS = [
   'gemini-pro',
 ];
 
+function getGeminiApiKey() {
+  return process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY || '';
+}
+
 /**
  * Llama a la API de Gemini con el prompt dado y devuelve el texto bruto.
  */
 async function callGeminiBrain(prompt) {
-  if (!GEMINI_API_KEY) throw new Error('Falta GOOGLE_AI_API_KEY en variables de entorno');
+  const geminiApiKey = getGeminiApiKey();
+  if (!geminiApiKey) {
+    throw new Error('Faltan GOOGLE_AI_API_KEY y GEMINI_API_KEY en variables de entorno');
+  }
 
   const body = JSON.stringify({
     contents: [{ parts: [{ text: prompt }] }],
@@ -26,7 +32,7 @@ async function callGeminiBrain(prompt) {
 
   let lastError = null;
   for (const model of CANDIDATE_MODELS) {
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
     try {
       const text = await new Promise((resolve, reject) => {
         const u = new URL(geminiUrl);
