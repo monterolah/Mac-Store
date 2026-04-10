@@ -225,7 +225,30 @@ function buildDeterministicGuidanceDecision(userMessage = '', allProducts = [], 
   if (imageChangeIntent) {
     const refMatch = msg.match(/(?:quiero\s+cambiar\s+la\s+imagen\s+de|cambiar\s+imagen\s+de|actualizar\s+imagen\s+de|poner\s+imagen\s+de)\s+(.+)$/i);
     const ref = refMatch ? String(refMatch[1] || '').trim() : '';
-    const targetProd = findProductByRef(allProducts, ref, implicitProduct);
+    let targetProd = findProductByRef(allProducts, ref, implicitProduct);
+    if (!targetProd && ref) {
+      const refTokens = normalizeForIntent(ref)
+        .split(' ')
+        .map(t => t.trim())
+        .filter(t => t && t.length >= 2 && !['de', 'del', 'la', 'el', 'los', 'las'].includes(t));
+
+      if (refTokens.length) {
+        const ranked = allProducts
+          .map(p => {
+            const nameNorm = normalizeForIntent(String(p?.name || ''));
+            let score = 0;
+            for (const tk of refTokens) {
+              if (nameNorm.includes(tk)) score += 1;
+            }
+            return { p, score };
+          })
+          .filter(x => x.score > 0)
+          .sort((a, b) => b.score - a.score);
+        if (ranked.length && ranked[0].score >= Math.min(2, refTokens.length)) {
+          targetProd = ranked[0].p;
+        }
+      }
+    }
     if (targetProd) {
       return {
         mode: 'general',
