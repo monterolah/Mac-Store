@@ -207,6 +207,11 @@ function buildOfflineGeneralConversationText(userMessage = '') {
     return 'Sí puedo conversar de fútbol. Si quieres, te hablo de favoritos, clasificados, formato del Mundial o historia del torneo. Si me dices el año exacto, te respondo mejor.';
   }
 
+  const topic = String(userMessage || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (topic) {
+    return `Sí, te entiendo. Si quieres, hablamos de "${topic}" y te doy una respuesta directa.`;
+  }
+
   return '';
 }
 

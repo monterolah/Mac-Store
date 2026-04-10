@@ -583,8 +583,9 @@ async function resolveImageUrlFromInput(rawUrl = '') {
 }
 
 function countTokenOverlap(a, b) {
-  const ta = new Set(normalizeForMatch(a).split(' ').filter(t => t.length > 2));
-  const tb = new Set(normalizeForMatch(b).split(' ').filter(t => t.length > 2));
+  const keepToken = (t) => t.length > 2 || /^\d+$/.test(t);
+  const ta = new Set(normalizeForMatch(a).split(' ').filter(keepToken));
+  const tb = new Set(normalizeForMatch(b).split(' ').filter(keepToken));
   let overlap = 0;
   for (const t of ta) if (tb.has(t)) overlap += 1;
   return overlap;
@@ -1196,6 +1197,11 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     const invalidUpdateAction = response.action === 'PRODUCT_UPDATE' && (!response.data?.productId || !response.data?.updates || !Object.keys(response.data.updates || {}).length);
     const invalidCreateAction = response.action === 'PRODUCT_CREATE' && !response.data?.product?.name;
     const hasCapacityEnableCommand = /(?:habilita|habilitar|activa|activar)\s+[0-9]{2,4}\s?gb\s+para\s+/i.test(String(effectiveMessage || ''));
+    const onlyUrlInput = /^\s*https?:\/\/\S+\s*$/i.test(String(effectiveMessage || ''));
+    const hasPendingImageContext = Boolean(ramiroPendingImageUpdate.get(adminKey));
+    const hasImageCommandHint = /(?:imagen|foto|ponle|pon|cambia|actualiza|agrega|agregale|anade|anadele|añade|añadele|sube|subele)/i.test(String(effectiveMessage || ''));
+    const shouldPrioritizeImageDeterministic = (hasPendingImageContext && onlyUrlInput)
+      || (hasImageCommandHint && isLikelyOperationalIntent(effectiveMessage || ''));
     const isBrainFallbackMessage = /no pude procesar bien ese mensaje/i.test(String(response.message || ''))
       || String(response.intentType || '') === 'fallback_no_parse';
 
@@ -1219,6 +1225,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
       || invalidUpdateAction
       || invalidCreateAction
       || hasCapacityEnableCommand
+      || shouldPrioritizeImageDeterministic
       || isTemplatePlaceholder
       || (!brainAlreadyHandledConversation && (!response.action || isLikelyOperationalIntent(effectiveMessage || '') || !hasNaturalBrainResponse));
 
@@ -1639,7 +1646,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
 
       // 2.5) Imagen sobre producto mencionado o implícito: "ponle imagen a los airpods 4"
       if (!response.action) {
-        const isImageCmd = /(?:ponle|cambiale|actualizale|pon|cambia|agrega|agregale|añade|añadir|sube|subele).*(?:imagen|foto)/i.test(msg)
+        const isImageCmd = /(?:ponle|cambiale|actualizale|pon|cambia|agrega|agregale|anade|anadele|añade|añadele|añadir|sube|subele).*(?:imagen|foto)/i.test(msg)
           || /(?:imagen|foto).*(?:ponle|cambiale|actualizale|pon|cambia|agrega)/i.test(msg);
         if (isImageCmd) {
           // Prioridad 1: producto mencionado explícitamente en el mensaje actual
