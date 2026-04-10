@@ -2076,7 +2076,8 @@ REGLAS DE COMPORTAMIENTO:
    {"message":"✅ borrado","action":"PRODUCT_DELETE","data":{"productId":"ID"}}
 
 4. INFO: Solo responder (cuando usuario pregunta sin pedir acción)
-  {"message":"Respuesta natural y útil basada en datos reales disponibles","action":null}
+  {"message":"<escribe aquí tu respuesta real en español>","action":null}
+  NUNCA copies ese texto literal — siempre escribe la respuesta real.
 
 5. Cuando la petición sea ambigua y falte contexto para actuar con seguridad
   {"message":"Pregunta breve de aclaración","action":null,"data":null}
@@ -2145,7 +2146,13 @@ ${implicitTargetProduct ? `${implicitTargetProduct.id} | ${implicitTargetProduct
     try { response = JSON.parse(rawText); }
     catch(e) { response = { message: rawText || 'No pude responder.', action: null, data: null }; }
 
-    const isTemplatePlaceholder = !response.action && /tu respuesta conversacional aqui/i.test(String(response.message || ''));
+    const PLACEHOLDER_PATTERNS = [
+      /tu respuesta conversacional aqui/i,
+      /respuesta natural y.{0,30}disponibles?/i,
+      /escribe aqu[ií] tu respuesta/i,
+      /^respuesta (real|base|conversacional)/i
+    ];
+    const isTemplatePlaceholder = !response.action && PLACEHOLDER_PATTERNS.some(r => r.test(String(response.message || '')));
     if (isTemplatePlaceholder) {
       response = { message: '', action: null, data: null };
     }
@@ -2181,6 +2188,21 @@ ${implicitTargetProduct ? `${implicitTargetProduct.id} | ${implicitTargetProduct
           action: null,
           data: null
         };
+      }
+
+      // -2) Mensaje de ayuda genérico: "ayúdame", "me ayudas", "qué puedes hacer", saludos sin contexto
+      if (!response.action) {
+        const helpIntent = /^(ayuda(me)?|me ayudas?|hola|hey ramiro|buenas?|qu[eé] puedes?|para qu[eé] sirves?|.{0,20})$/i.test(msg.trim());
+        if (helpIntent || isTemplatePlaceholder) {
+          const catCount = [...new Set(allProducts.map(p => p.category))].length;
+          const activeCount = allProducts.filter(p => p.active).length;
+          const cats = [...new Set(allProducts.map(p => p.category))].join(', ');
+          response = {
+            message: `¡Hola! Soy Ramiro. Tenés ${allProducts.length} productos en catálogo (${activeCount} activos) en ${catCount} categorías: ${cats}.\n\nPuedo ayudarte a:\n• Administrar productos (crear, editar, ocultar, eliminar)\n• Cambiar precios, imágenes, colores o variantes\n• Importar catálogos desde un link\n• Responder dudas del sistema y explicar cómo funciona todo\n• Consultar cotizaciones y datos de la tienda\n\n¿En qué arrancamos?`,
+            action: null,
+            data: null
+          };
+        }
       }
 
       // -1) Importación/sincronización masiva desde URL: "agregame todo lo de este enlace"
