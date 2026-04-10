@@ -99,7 +99,10 @@ function buildFallbackDecision(userMessage, question = null, rawResponse = null)
     fallbackText = question;
   } else {
     const msgLower = String(userMessage || '').toLowerCase();
-    if (msgLower.includes('precio') || msgLower.match(/\$?\d+/)) {
+    const hasPriceSignal = msgLower.includes('precio')
+      || /\$\s*[0-9]{2,6}/.test(msgLower)
+      || /[0-9]{2,6}\s*(usd|dolares|dólares)/.test(msgLower);
+    if (hasPriceSignal) {
       fallbackText = 'Disculpa, no pude cerrar bien el cambio de precio. Dime el producto y el monto, por ejemplo: cambiar precio de iPhone 15 a $899.';
     } else if (msgLower.includes('imagen') || msgLower.includes('foto') || msgLower.match(/https?:\/\//)) {
       fallbackText = 'Disculpa, el cambio de imagen quedó incompleto. Dime primero el producto y luego me mandas el URL.';
@@ -155,13 +158,13 @@ function isLikelyGeneralConversation(text = '') {
 
   const signals = [
     'hola', 'hey', 'buenas', 'que tal', 'como estas', 'como te va', 'que opinas',
-    'a que equipo le vas', 'mundial', 'futbol', 'paises', 'selecciones', 'quien gana',
+    'a que equipo le vas', 'mundial', 'futbol', 'paises', 'selecciones', 'quien gana', 'argentina', 'argentino',
     'guerra fria', 'historia', 'inteligencia artificial', 'ia', 'explicame', 'cuentame',
     'que sabes', 'por que', 'porque', 'como funciona', 'que significa', 'cual es', 'cuales son'
   ];
 
   return signals.some(signal => n.includes(signal))
-    || /^(que|como|cual|cuales|quien|quienes|donde|cuando|por que|porque|me puedes|puedes|opinas)/.test(n);
+    || /^(que|como|cual|cuales|quien|quienes|donde|cuando|por que|porque|me puedes|puedes|opinas|si|simon)/.test(n);
 }
 
 function isLikelyOperationalMessage(text = '') {
@@ -193,6 +196,10 @@ function buildOfflineGeneralConversationText(userMessage = '') {
 
   if ((n.includes('paises') || n.includes('selecciones')) && n.includes('mundial')) {
     return 'Depende de cuál Mundial hablas, porque los clasificados cambian por edición. Si me dices si te refieres a 2022, 2026 u otro, te digo los países exactos; si quieres, también te explico cómo se reparten los cupos por confederación.';
+  }
+
+  if (n.includes('argentina') || n.includes('argentino')) {
+    return 'Si hablas de Argentina para el Mundial, suele estar entre favoritos por plantilla y funcionamiento. Si quieres, te comparo contra 2 o 3 selecciones fuertes y te digo puntos clave.';
   }
 
   if (n.includes('futbol') || n.includes('mundial')) {

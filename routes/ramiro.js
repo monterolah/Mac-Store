@@ -498,7 +498,16 @@ function getProductIdFromPageContext(pageContext) {
 function resolveProductByIdOrSlug(products, idOrSlug) {
   const key = String(idOrSlug || '').trim();
   if (!key) return null;
-  return products.find(p => p.id === key || String(p.slug || '') === key) || null;
+  const keyNorm = normalizeForMatch(key);
+  return products.find((p) => {
+    const id = String(p?.id ?? '').trim();
+    const slug = String(p?.slug || '').trim();
+    const name = String(p?.name || '').trim();
+    return id === key
+      || String(id).toLowerCase() === String(key).toLowerCase()
+      || normalizeForMatch(slug) === keyNorm
+      || normalizeForMatch(name) === keyNorm;
+  }) || null;
 }
 
 function resolveTargetProduct(products, rawRef, fallbackProduct) {
@@ -1652,6 +1661,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
             } else {
               ramiroPendingImageUpdate.set(adminKey, {
                 productId: imageTarget.id,
+                productSlug: imageTarget.slug || '',
                 productName: imageTarget.name,
                 expiresAt: Date.now() + RAMIRO_IMAGE_TTL_MS,
               });
@@ -1669,9 +1679,12 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
       if (!response.action) {
         const onlyUrl = msg.match(/^\s*(https?:\/\/\S+)\s*$/i);
         const imagePending = ramiroPendingImageUpdate.get(adminKey);
-        const fallbackPendingProduct = imagePending
-          ? resolveProductByIdOrSlug(allProducts, imagePending.productId)
-          : null;
+        let fallbackPendingProduct = null;
+        if (imagePending) {
+          fallbackPendingProduct = resolveProductByIdOrSlug(allProducts, imagePending.productId)
+            || resolveProductByIdOrSlug(allProducts, imagePending.productSlug)
+            || findProductMentionInText(allProducts, String(imagePending.productName || ''));
+        }
 
         if (onlyUrl && fallbackPendingProduct) {
           const imageUrl = await resolveImageUrlFromInput(onlyUrl[1]);
@@ -1685,8 +1698,11 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
           };
           ramiroPendingImageUpdate.delete(adminKey);
         } else if (onlyUrl && !fallbackPendingProduct) {
-          // URL enviada sin contexto de imagen pendiente — ignorar silenciosamente o preguntar
-          // No sobreescribir si ya hay respuesta de otra rama
+          response = {
+            message: 'Recibí la URL, pero no tengo una actualización de imagen pendiente. Dime primero el producto (por ejemplo: "ponle imagen a los AirPods 4") y luego me mandas el link.',
+            action: null,
+            data: null,
+          };
         }
       }
 
