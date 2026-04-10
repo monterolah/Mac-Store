@@ -1805,13 +1805,25 @@ ${recentHistory ? recentHistory + '\n' : ''}Admin: ${message}`;
           const parsedColors = colorsRaw
             .split(/,|\sy\s|\se\s/i)
             .map(c => cleanText(c, 40))
+            .map(c => c ? c.charAt(0).toUpperCase() + c.slice(1).toLowerCase() : '')
             .filter(Boolean);
 
           const existingColors = Array.isArray(targetProd.color_variants)
-            ? targetProd.color_variants.map(c => typeof c === 'string' ? c : String(c?.label || c?.name || '')).filter(Boolean)
+            ? targetProd.color_variants
+              .map(c => typeof c === 'string' ? c : String(c?.label || c?.name || ''))
+              .map(c => c ? c.charAt(0).toUpperCase() + c.slice(1).toLowerCase() : '')
+              .filter(Boolean)
             : [];
 
-          const merged = Array.from(new Set([...existingColors, ...parsedColors]));
+          const merged = [];
+          const seen = new Set();
+          for (const c of [...existingColors, ...parsedColors]) {
+            const k = c.toLowerCase();
+            if (!seen.has(k)) {
+              seen.add(k);
+              merged.push(c);
+            }
+          }
           response = {
             message: `✅ agregado colores ${parsedColors.join(', ')} a ${targetProd.name}`,
             action: 'PRODUCT_UPDATE',
@@ -1851,7 +1863,20 @@ ${recentHistory ? recentHistory + '\n' : ''}Admin: ${message}`;
           if (key === 'variants' && !Array.isArray(val)) val = [];
           if (key === 'color_variants') {
             if (!Array.isArray(val)) val = [];
-            val = val.map(c => typeof c === 'string' ? c : String(c?.label || c?.name || '')).filter(Boolean);
+            const normalized = val
+              .map(c => typeof c === 'string' ? c : String(c?.label || c?.name || ''))
+              .map(c => c ? c.charAt(0).toUpperCase() + c.slice(1).toLowerCase() : '')
+              .filter(Boolean);
+            const out = [];
+            const seen = new Set();
+            for (const c of normalized) {
+              const k = c.toLowerCase();
+              if (!seen.has(k)) {
+                seen.add(k);
+                out.push(c);
+              }
+            }
+            val = out;
           }
           if (key === 'specs' && typeof val !== 'object') val = {};
           cleanUpdates[key] = val;
