@@ -100,6 +100,11 @@ function cleanText(value, max = 5000) {
   return String(value || '').trim().slice(0, max);
 }
 
+function isBlockedPrivateHost(hostname = '') {
+  const h = String(hostname || '').toLowerCase();
+  return /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|0\.0\.0\.0|169\.254\.)/.test(h);
+}
+
 function cleanGeminiJson(rawText) {
   let text = String(rawText || '')
     .trim()
