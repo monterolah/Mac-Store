@@ -174,6 +174,27 @@ function stripTrailingPriceFromName(text) {
     .trim();
 }
 
+function isGenericAssistantPrompt(text = '') {
+  const n = normalizeForMatch(text);
+  if (!n) return true;
+  return [
+    'en que te puedo ayudar',
+    'en que puedo ayudarte',
+    'como te puedo ayudar',
+    'dime en que te ayudo'
+  ].includes(n);
+}
+
+function getAdminDisplayName(admin = {}) {
+  const raw = cleanText(admin?.name || '', 80);
+  if (raw) return raw;
+  const email = String(admin?.email || '').trim();
+  if (!email || !email.includes('@')) return '';
+  const user = email.split('@')[0] || '';
+  const clean = user.replace(/[._-]+/g, ' ').trim();
+  return clean || user;
+}
+
 function getProductIdFromPageContext(pageContext) {
   const pathValue = String(pageContext || '');
   if (!pathValue) return null;
@@ -736,10 +757,11 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     const invalidUpdateAction = response.action === 'PRODUCT_UPDATE' && (!response.data?.productId || !response.data?.updates || !Object.keys(response.data.updates || {}).length);
     const invalidCreateAction = response.action === 'PRODUCT_CREATE' && !response.data?.product?.name;
     const hasCapacityEnableCommand = /(?:habilita|habilitar|activa|activar)\s+[0-9]{2,4}\s?gb\s+para\s+/i.test(String(message || ''));
-    const hasNaturalBrainResponse = Boolean(String(response.message || '').trim()) && !isTemplatePlaceholder;
+    const hasNaturalBrainResponse = Boolean(String(response.message || '').trim())
+      && !isTemplatePlaceholder
+      && !isGenericAssistantPrompt(response.message);
     const brainAlreadyHandledConversation = hasNaturalBrainResponse
       && !response.action
-      && ['general', 'help', 'clarification', 'confirmation'].includes(String(response.mode || '').toLowerCase())
       && !isLikelyOperationalIntent(message || '');
 
     const shouldForceDeterministic = response.action === 'INFO'
@@ -747,13 +769,39 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
       || invalidCreateAction
       || hasCapacityEnableCommand
       || isTemplatePlaceholder
-      || (!brainAlreadyHandledConversation && (!response.action || isLikelyOperationalIntent(message || '')));
+      || (!brainAlreadyHandledConversation && (!response.action || isLikelyOperationalIntent(message || '') || !hasNaturalBrainResponse));
 
     if (shouldForceDeterministic) {
       response = { message: response.message || '', action: null, data: null };
       const msg = String(message || '').trim();
       const msgNorm = normalizeForMatch(msg);
+      const adminDisplayName = getAdminDisplayName(req.admin);
       const targetFromRef = (ref) => resolveTargetProduct(allProducts, ref, implicitTargetProduct);
+
+      if (!response.action) {
+        const asksOwnName = /(sabes\s+como\s+me\s+llamo|como\s+me\s+llamo|cual\s+es\s+mi\s+nombre|cu[aá]l\s+es\s+mi\s+nombre|sabes\s+mi\s+nombre)/i.test(msgNorm);
+        if (asksOwnName) {
+          response = {
+            message: adminDisplayName
+              ? `Sí, te tengo como ${adminDisplayName}. Si quieres, te puedo llamar por otro nombre y lo uso en esta conversación.`
+              : 'No tengo un nombre visible para ti todavía. Si quieres, dime cómo prefieres que te llame y lo uso en esta conversación.',
+            action: null,
+            data: null
+          };
+        }
+      }
+
+      if (!response.action) {
+        const editHelpIntent = hasAnyStem(msgNorm, ['editar', 'edito', 'edit'])
+          && hasAnyStem(msgNorm, ['no se', 'nose', 'como', 'ayuda', 'explica']);
+        if (editHelpIntent) {
+          response = {
+            message: 'Te guío rápido para editar un producto: 1) abre Admin > Productos, 2) entra al producto, 3) toca Editar, 4) cambia lo que necesites (precio, imagen, colores, stock) y 5) guarda. Si quieres, también puedes pedírmelo por chat con una frase directa, por ejemplo: "precio de iPhone 15 a $999" o "cambia imagen de MacBook Air a https://...".',
+            action: null,
+            data: null
+          };
+        }
+      }
 
       const complaintIntent = /(equivoc|no era|no es|te pasaste|la cagaste|mala|mal|incorrect)/i.test(msgNorm);
       if (complaintIntent) {
@@ -838,7 +886,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
         const greetIntent = /^(ayuda(me)?|me ayudas?|hola+|hey+y*( ramiro)?|buenas?|qu[eé] puedes?|para qu[eé] sirves?|qu[eé] haces?)\s*[.!?]*$/i.test(msg.trim());
         if (greetIntent || isTemplatePlaceholder) {
           response = {
-            message: '¿En qué te puedo ayudar?',
+            message: 'Aquí estoy. Puedo: 1) buscar productos, 2) editar precio, imagen, colores o stock, 3) activar/desactivar productos, 4) crear o eliminar con confirmación, y 5) ayudarte con cotizaciones. Dime una sola cosa y la hacemos de una vez.',
             action: null,
             data: null
           };
@@ -1418,7 +1466,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
       // Fallback final: si después de todo no hay acción ni mensaje útil, preguntar
       if (!response.action && !String(response.message || '').trim()) {
         response = {
-          message: '¿En qué te puedo ayudar?',
+          message: 'Te leo. Si quieres, dime exactamente qué necesitas y lo resolvemos paso a paso (por ejemplo: "editar precio", "quitar color", "crear producto" o "mandar cotización").',
           action: null,
           data: null
         };
