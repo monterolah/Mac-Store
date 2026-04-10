@@ -1744,20 +1744,18 @@ ${catalogoDetallado}
 1. PRODUCT_UPDATE: Modificar producto
    {"message":"✅ actualizado","action":"PRODUCT_UPDATE","data":{"productId":"ID","updates":{"price":999,"color_variants":["Rojo"]}}}
 
-2. PRODUCT_CREATE: Crear producto
-   {"message":"✅ creado","action":"PRODUCT_CREATE","data":{"product":{"name":"...","category":"mac|iphone|ipad|airpods","price":999}}}
+2. PRODUCT_CREATE: Crear producto NUEVO
+  {"message":"✅ creado: AirPods Pro $299","action":"PRODUCT_CREATE","data":{"product":{"name":"AirPods Pro","category":"airpods","price":299}}}
+  ⚠️ IMPORTANTE: category DEBE SER uno de estos: mac, iphone, ipad, airpods (NO una lista)
 
 3. PRODUCT_DELETE: Borrar producto
    {"message":"✅ borrado","action":"PRODUCT_DELETE","data":{"productId":"ID"}}
 
-4. INFO: Solo responder
-   {"message":"Tu respuesta aquí","action":null}
+4. INFO: Solo responder (cuando usuario pregunta sin pedir acción)
+  {"message":"Tu respuesta conversacional aquí","action":null}
 
 REGLAS CRÍTICAS:
-- Busca productId por nombre exacto en el catálogo
-- Si no encuentras producto, pregunta antes de actuar
-- Responde SIEMPRE con JSON válido, JAMÁS con markdown
-- En "updates" incluye SOLO los campos que cambian
+- Para CREATE: SIEMPRE elige UNA categoría de: mac, iphone, ipad, airpods
 - Campos permitidos: price, description, variants, color_variants, stock, active, specs, badge, image_url
 
 Estilo: Responde en español, conversacional y conciso.`;
