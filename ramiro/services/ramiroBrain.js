@@ -198,6 +198,54 @@ function findProductByRef(products = [], ref = '', fallbackProduct = null) {
   return fallbackProduct || null;
 }
 
+function buildDeterministicGuidanceDecision(userMessage = '', allProducts = [], implicitProduct = null) {
+  const msg = String(userMessage || '').trim();
+  if (!msg) return null;
+  const n = normalizeForIntent(msg);
+
+  const importByLinkIntent = /(te paso).*(link|url|enlace).*(catalogo|catalogo|productos?)|importas?.*(catalogo|catalogo|productos?)/i.test(n)
+    || /(revisa|mira|lee).*(catalogo|catalogo).*(enlace|link|url)/i.test(n);
+  if (importByLinkIntent && !/https?:\/\//i.test(msg)) {
+    return {
+      mode: 'general',
+      intent: 'deterministic_catalog_url_guidance',
+      confidence: 0.99,
+      requiresConfirmation: false,
+      needsClarification: false,
+      understood: 'El usuario quiere importar/revisar catálogo por URL y aún no envía enlace.',
+      entity: { type: 'unknown', id: null, name: null, filters: {}, matches: [] },
+      action: { type: 'answer', payload: {} },
+      question: null,
+      response: 'Pásame la URL completa del catálogo y lo reviso. Debe ser una URL pública (no localhost ni IP privada).',
+      memory: { shouldRemember: false, facts: [] },
+    };
+  }
+
+  const imageChangeIntent = /(quiero\s+cambiar\s+la\s+imagen\s+de|cambiar\s+imagen\s+de|actualizar\s+imagen\s+de|poner\s+imagen\s+de)/i.test(n);
+  if (imageChangeIntent) {
+    const refMatch = msg.match(/(?:quiero\s+cambiar\s+la\s+imagen\s+de|cambiar\s+imagen\s+de|actualizar\s+imagen\s+de|poner\s+imagen\s+de)\s+(.+)$/i);
+    const ref = refMatch ? String(refMatch[1] || '').trim() : '';
+    const targetProd = findProductByRef(allProducts, ref, implicitProduct);
+    if (targetProd) {
+      return {
+        mode: 'general',
+        intent: 'deterministic_image_url_guidance',
+        confidence: 0.99,
+        requiresConfirmation: false,
+        needsClarification: false,
+        understood: `Solicitar URL para cambiar imagen de ${targetProd.name}`,
+        entity: { type: 'product', id: targetProd.id, name: targetProd.name, filters: {}, matches: [] },
+        action: { type: 'answer', payload: {} },
+        question: null,
+        response: `¿Cuál es la URL de la imagen que quieres agregar a **${targetProd.name}**?`,
+        memory: { shouldRemember: false, facts: [] },
+      };
+    }
+  }
+
+  return null;
+}
+
 function buildDeterministicOperationalDecision(userMessage = '', allProducts = [], implicitProduct = null) {
   const msg = String(userMessage || '').trim();
   if (!msg) return null;
@@ -533,6 +581,14 @@ async function thinkRamiro(opts) {
     return {
       decision: deterministicDecision,
       legacy: translateBrainToLegacy(deterministicDecision),
+    };
+  }
+
+  const deterministicGuidanceDecision = buildDeterministicGuidanceDecision(userMessage, allProducts, implicitProduct);
+  if (deterministicGuidanceDecision) {
+    return {
+      decision: deterministicGuidanceDecision,
+      legacy: translateBrainToLegacy(deterministicGuidanceDecision),
     };
   }
 
