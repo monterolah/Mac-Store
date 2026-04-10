@@ -1872,7 +1872,7 @@ ${recentHistory ? recentHistory + '\n' : ''}Admin: ${message}`;
         const urlMatch = msg.match(/https?:\/\/\S+/i);
         if (urlMatch) {
           const imageUrl = urlMatch[0].replace(/[),.;]+$/, '');
-          const byTail = msg.match(/(?:a|para|en)\s+(.+)$/i);
+          const byTail = msg.match(/\b(?:a|para|en)\b\s+(.+)$/i);
           const targetCandidate = byTail ? byTail[1].replace(urlMatch[0], '').trim() : msg.replace(urlMatch[0], '').trim();
           const targetProd = findProductByRef(allProducts, targetCandidate);
           if (targetProd) {
@@ -1997,6 +1997,51 @@ ${recentHistory ? recentHistory + '\n' : ''}Admin: ${message}`;
               updates: { color_variants: merged }
             }
           };
+        }
+      }
+    }
+
+    // Guardrails por intención: evita que Gemini meta cambios no pedidos
+    const userMsg = String(message || '');
+    const userMsgNorm = normalizeForMatch(userMsg);
+
+    // Si el comando es de imagen y la respuesta no trae image_url, forzamos update determinista de imagen
+    if (/(imagen|foto)/i.test(userMsg) && /https?:\/\//i.test(userMsg)) {
+      const hasImageUpdate = response.action === 'PRODUCT_UPDATE' && response.data?.updates?.image_url;
+      if (!hasImageUpdate) {
+        const urlMatch = userMsg.match(/https?:\/\/\S+/i);
+        if (urlMatch) {
+          const imageUrl = urlMatch[0].replace(/[),.;]+$/, '');
+          const byTail = userMsg.match(/\b(?:a|para|en)\b\s+(.+)$/i);
+          const targetCandidate = byTail ? byTail[1].replace(urlMatch[0], '').trim() : userMsg.replace(urlMatch[0], '').trim();
+          const targetProd = findProductByRef(allProducts, targetCandidate);
+          if (targetProd) {
+            response = {
+              message: `✅ imagen actualizada para ${targetProd.name}`,
+              action: 'PRODUCT_UPDATE',
+              data: { productId: targetProd.id, updates: { image_url: imageUrl } }
+            };
+          }
+        }
+      }
+    }
+
+    if (response.action === 'PRODUCT_UPDATE' && response.data?.updates) {
+      const intentFields =
+        /(colores?|color)/i.test(userMsgNorm) ? ['color_variants'] :
+        /(imagen|foto)/i.test(userMsgNorm) ? ['image_url'] :
+        /(precio|\$)/i.test(userMsgNorm) ? ['price'] :
+        /(stock|inventario)/i.test(userMsgNorm) ? ['stock'] :
+        /(activa|activar|desactiva|desactivar|inactivo|activo)/i.test(userMsgNorm) ? ['active'] :
+        null;
+
+      if (intentFields) {
+        const filtered = {};
+        for (const k of intentFields) {
+          if (Object.prototype.hasOwnProperty.call(response.data.updates, k)) filtered[k] = response.data.updates[k];
+        }
+        if (Object.keys(filtered).length) {
+          response.data.updates = filtered;
         }
       }
     }
