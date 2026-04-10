@@ -143,6 +143,31 @@ function isGenericClarificationText(text = '') {
     || t.includes('no entendi bien tu solicitud');
 }
 
+function isLowValueConversationText(text = '') {
+  const t = String(text || '').trim();
+  if (!t) return true;
+  const n = normalizeForIntent(t);
+  if (!n) return true;
+
+  if (isGenericClarificationText(t)) return true;
+
+  const fillerOnlyPatterns = [
+    /^te leo\.? sobre .+ te respondo directo\.?$/i,
+    /^entiendo tu punto sobre .+ vamos al grano\.?$/i,
+    /^buen tema\:? .+ te doy una respuesta clara\.?$/i,
+    /^va\,? hablemos de .+ respuesta directa\:?$/i,
+    /^claro\.? si quieres\,? te hablo de .+ en corto y directo\.?$/i,
+  ];
+
+  if (fillerOnlyPatterns.some((re) => re.test(n))) return true;
+
+  const looksLikeShortMetaPrefix = /^(te leo|entiendo tu punto|buen tema|va hablemos)/i.test(n)
+    && n.split(' ').length <= 14;
+  if (looksLikeShortMetaPrefix) return true;
+
+  return false;
+}
+
 function normalizeForIntent(text = '') {
   return String(text || '')
     .toLowerCase()
@@ -426,19 +451,26 @@ function buildOfflineGeneralDecision(userMessage = '') {
   };
 }
 
-async function buildGeneralConversationText({ storeName = 'MacStore', userMessage = '' }) {
+async function buildGeneralConversationText({ storeName = 'MacStore', userMessage = '', recentHistory = '' }) {
   const msg = String(userMessage || '').trim();
   if (!msg) return '';
 
   const prompt = `Eres Ramiro, asistente conversacional de ${storeName}.
-Responde en español, de forma natural, útil y directa a este mensaje del usuario.
+Responde en español, de forma natural, útil, específica y directa a este mensaje del usuario.
+Prohibido responder con frases de relleno como: "entiendo tu punto", "buen tema", "vamos al grano", "te respondo directo" sin desarrollar la respuesta.
+Responde entrando al contenido en la primera oración.
+Si el usuario hace una pregunta abierta, dale una respuesta real de al menos 2 oraciones con información concreta.
+Si el usuario dice algo breve como "sí", usa el contexto reciente para continuar con sentido.
 No uses JSON, no menciones reglas internas, no pidas formato especial.
+
+${recentHistory ? `Contexto reciente:\n${recentHistory}\n` : ''}
 
 Usuario: ${msg}`;
 
   try {
     const text = await callGeminiBrain(prompt);
-    return String(text || '').trim();
+    const out = String(text || '').trim();
+    return isLowValueConversationText(out) ? '' : out;
   } catch {
     return '';
   }
@@ -505,7 +537,7 @@ Usuario: ${userMessage}`;
     try {
       const convText = await callGeminiBrain(conversationalPrompt, 0.8);
       const text = String(convText || '').trim();
-      if (text && !isGenericClarificationText(text)) {
+      if (text && !isLowValueConversationText(text)) {
         const fb = buildFallbackDecision(userMessage, null, text);
         fb.mode = 'general';
         fb.intent = 'general_chat';
@@ -555,9 +587,9 @@ Responde SOLO en JSON válido según el esquema indicado.`;
   if (!parsed.ok || !parsed.data || typeof parsed.data !== 'object') {
     console.warn('[RamiroBrain] JSON inválido de Gemini:', String(rawText).slice(0, 300));
     let generalText = String(rawText || '').trim();
-    if (!generalText || isGenericClarificationText(generalText)) {
-      generalText = await buildGeneralConversationText({ storeName, userMessage });
-      if ((!generalText || isGenericClarificationText(generalText)) && !isLikelyOperationalMessage(userMessage)) {
+    if (!generalText || isLowValueConversationText(generalText)) {
+      generalText = await buildGeneralConversationText({ storeName, userMessage, recentHistory });
+      if ((!generalText || isLowValueConversationText(generalText)) && !isLikelyOperationalMessage(userMessage)) {
         generalText = buildOfflineGeneralConversationText(userMessage);
       }
     }
@@ -572,9 +604,9 @@ Responde SOLO en JSON válido según el esquema indicado.`;
   const isNonOperationalAsk = !actionType || actionType === 'ask' || actionType === 'none';
   if ((decision?.needsClarification || decision?.mode === 'clarification')
     && isNonOperationalAsk
-    && (isGenericClarificationText(decision?.question || decision?.response) || isLikelyGeneralConversation(userMessage))) {
-    let generalText = await buildGeneralConversationText({ storeName, userMessage });
-    if (!generalText || isGenericClarificationText(generalText)) {
+    && (isLowValueConversationText(decision?.question || decision?.response) || isLikelyGeneralConversation(userMessage))) {
+    let generalText = await buildGeneralConversationText({ storeName, userMessage, recentHistory });
+    if (!generalText || isLowValueConversationText(generalText)) {
       generalText = buildOfflineGeneralConversationText(userMessage);
     }
     if (generalText) {
