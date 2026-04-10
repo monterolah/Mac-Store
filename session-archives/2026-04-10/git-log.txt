@@ -1,0 +1,57 @@
+﻿4b71dc3 (HEAD -> main, origin/main, origin/HEAD) feat: make ramiro learn and persist user semantic explanations
+d7dc68e fix: improve ramiro multi-turn create and remove false action-completed UI
+4c893b9 fix: remove remaining ramiro execution blockers after full audit
+a6d71f7 fix: remove remaining ramiro confirmation caps for agreed flows
+bff1a32 fix: remove restrictive ramiro execution conditions
+ba66984 fix: complete ramiro conversational behavior and fallback handling
+5f1c682 fix: make hero banners truly adaptive on mobile
+1697f68 fix: adapt hero banners for mobile screens
+a5ccf36 fix: prevent product image crop on category mobile cards
+b42e1ed feat: improve ramiro flow and full storefront mobile responsiveness
+b9209e5 fix: remove cheerio dependency to fix production crash + refactor HTML parsing to use regex only
+ca0ed5b refactor: extract Ramiro chat to dedicated routes/ramiro.js module
+8ccc124 feat: Ramiro modular ÔÇö nuevo brain con schema estructurado, cheerio URL reader, memoria por usuario
+f8b00be feat: Ramiro pide confirmacion al crear productos y muestra que falta (imagen, colores, variantes)
+3339baa fix: Ramiro pregunta en vez de responder generico, fallback siempre es pregunta
+34ae3a2 fix: Ramiro responde real en vez de placeholder + respuesta generica util
+75ecd5d feat: Ramiro aprende patrones automaticamente + fix admin muestra todos los productos
+2760f3f fix: comandos de capacidad fuerzan parser determinista
+68d23b6 feat: habilitar capacidades por color con parser determinista
+7b809b9 fix: parser robusto de imagen + guardrails por intencion de comando
+e392419 fix: forzar parser determinista cuando Gemini responde INFO o acci├│n inv├ílida
+211e964 feat: motor determinista para comandos Ramiro + upsert inteligente
+3cf9a62 fix: normalizar y deduplicar colores en Ramiro
+bef3e56 fix: fallback para comandos de colores y normalizacion de color_variants
+fb950ca fix: aclarar en prompt que CREATE debe elegir UNA categoria
+144e2f9 fix: fallback slug en UPDATE/DELETE y mejor identificacion de productos
+efc3007 fix: reparar JSON incompleto de Gemini (llave final faltante)
+e9aac70 refactor: simplificar prompt de Ramiro para mejor comprension
+c2a58ff refactor: mejorar prompt de Ramiro y validaci├│n de acciones
+c14523d fix: detectar modelos Gemini disponibles automaticamente
+7759851 fix: fallback automatico de modelos Gemini
+82aa5a1 fix: Ramiro chat usa callGemini() para evitar No pude responder
+c76e8a9 feat: Ramiro con memoria persistente y sync de catalogo por URL
+517ac0a fix: API login - session segura y stack en error para debug
+153ffbd feat: editor frontend con Gemini (preview y apply con backup)
+961ad36 fix: guardar campo specs en PUT de productos
+630e04e fix: ocultar tagline del footer si no est├í configurado
+976da7f fix: evitar blanco al zoom y agregar control de badge autorizado
+8feaf86 feat: separar escala de imagen entre catalogo y detalle
+c748dd8 style: refine storefront to cleaner Apple-like aesthetic
+400fe33 Merge branch 'main' of https://github.com/monterolah/macstore-app
+94baa87 chore: initial local import
+85ef2e3 Add vendor mode (/tienda), search filter, auto-refresh + admin update button
+f7d612f Apple-style redesign: dark footer, dark auth section, refined cards and typography
+3d2f71c Add full responsive design (480/768/900px) + aesthetic improvements
+36adf24 Fix cuotas PDF label overlap with payment methods section
+6afb035 Fix ficha tecnica PDF spacing + add editable default foot notes from admin settings
+8bd4226 Remove admin requirement for PDF export route
+9a5e0ae Update Content-Security-Policy to allow Cloudinary
+6634c67 Change Cross-Origin-Embedder-Policy to credentialless
+eb137a8 Fix: ordenar productos por category en JS para evitar ├¡ndice compuesto de Firestore
+9f5e381 Fix: usar CLOUDINARY_URL para configuraci├│n
+b24ed33 Fix: limpiar caracteres extra en variables de Cloudinary
+e497ed9 Migrar im├ígenes de Firebase Storage a Cloudinary
+b4c0a64 Fix: limpiar caracteres extra en ADMIN_EMAIL
+bce7d9d Agregar JS y CSS compilados para deploy
+73f5751 MacStore v2.0 ÔÇö Firebase + Express + seguridad

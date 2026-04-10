@@ -1,0 +1,3 @@
+﻿SavedAt: 2026-04-10
+Workspace: C:/Users/josue/macstore-app
+SessionLogSource: C:/Users/josue/AppData/Roaming/Code/User/workspaceStorage/be15323fd8533d30345d72f7b64fd27b/GitHub.copilot-chat/debug-logs/e4fb4222-30e4-4503-b39c-333a0f49b255
