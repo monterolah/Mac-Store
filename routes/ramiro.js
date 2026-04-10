@@ -1144,28 +1144,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
 
     const projectContext = buildProjectContextSnapshot(path.join(__dirname, '..'));
 
-    // Atajos conversacionales estables: evita respuestas genéricas cuando el modelo falle.
-    const quickReply = getQuickConversationalReply(effectiveMessage, req.admin);
-    if (quickReply) {
-      await appendRamiroTranscript(db, {
-        role: 'user',
-        text: String(message || ''),
-        pageContext: pageContext || '',
-        conversationId,
-        adminEmail: req.admin?.email || ''
-      });
-      await appendRamiroTranscript(db, {
-        role: 'assistant',
-        text: quickReply,
-        conversationId,
-        action: null,
-        actionResult: null,
-        adminEmail: req.admin?.email || ''
-      });
-      return res.json({ ok: true, message: quickReply, conversationId });
-    }
-
-    // ── NUEVO BRAIN: Gemini con prompt estructurado y schema JSON claro ──────────
+    // ── BRAIN: Todo pasa por Gemini ──────────────────────────────────────────────
     let plan = null;
     let brainLegacy = null;
     let brainDecision = null;
