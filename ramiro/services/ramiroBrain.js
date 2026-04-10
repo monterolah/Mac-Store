@@ -111,7 +111,7 @@ function buildFallbackDecision(userMessage, question = null, rawResponse = null)
       fallbackText = 'Para crear el producto necesito al menos nombre, categoría y precio. Si quieres, te lo voy pidiendo paso a paso.';
     } else if (!isOperational || isLikelyGeneralConversation(userMessage)) {
       fallbackText = buildOfflineGeneralConversationText(userMessage)
-        || 'Te entendí. Si quieres, seguimos conversando normal; también puedo ayudarte con productos cuando me lo pidas.';
+        || buildHumanFallbackReply(userMessage);
     } else {
       fallbackText = 'Entendí que quieres hacer un cambio, pero me faltó contexto para ejecutarlo. Dime qué producto quieres tocar y qué campo quieres cambiar.';
     }
@@ -153,30 +153,55 @@ function normalizeForIntent(text = '') {
     .trim();
 }
 
+function hasOperationalSignals(text = '') {
+  const n = normalizeForIntent(text);
+  if (!n) return false;
+
+  const hasUrl = /https?:\/\//i.test(String(text || ''));
+  const actionVerbs = [
+    'crear', 'agregar', 'anadir', 'editar', 'actualizar', 'cambiar', 'modificar',
+    'eliminar', 'borrar', 'activar', 'desactivar', 'ocultar', 'mostrar',
+    'poner', 'pon', 'ponle', 'subir', 'sube', 'quitar', 'quita',
+    'importar', 'sincronizar', 'extraer', 'leer', 'lee', 'buscar', 'busca',
+    'completar', 'completa', 'rellenar', 'rellena', 'cotizar', 'cotizacion'
+  ];
+  const catalogTargets = [
+    'producto', 'productos', 'catalogo', 'categoria', 'precio', 'imagen', 'foto',
+    'color', 'colores', 'stock', 'variante', 'variantes', 'banner', 'anuncio',
+    'cotizacion', 'cotizaciones'
+  ];
+
+  const hasAction = actionVerbs.some(k => n.includes(k));
+  const hasTarget = catalogTargets.some(k => n.includes(k));
+
+  if (hasUrl && /(import|sincron|extra|leer|imagen|foto|producto)/.test(n)) return true;
+  return hasAction && hasTarget;
+}
+
+function buildHumanFallbackReply(userMessage = '') {
+  const topic = String(userMessage || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  if (!topic) return 'Te leo. Cuéntame un poco más y te respondo sin rodeos.';
+
+  const variants = [
+    `Te leo. Sobre "${topic}", te respondo directo.`,
+    `Entiendo tu punto sobre "${topic}". Vamos al grano.`,
+    `Buen tema: "${topic}". Te doy una respuesta clara.`,
+    `Va, hablemos de "${topic}". Respuesta directa:`
+  ];
+
+  let hash = 0;
+  for (let i = 0; i < topic.length; i += 1) hash = (hash + topic.charCodeAt(i)) % 997;
+  return variants[hash % variants.length];
+}
+
 function isLikelyGeneralConversation(text = '') {
   const n = normalizeForIntent(text);
   if (!n) return false;
-
-  const signals = [
-    'hola', 'hey', 'buenas', 'que tal', 'como estas', 'como te va', 'que opinas',
-    'a que equipo le vas', 'mundial', 'futbol', 'paises', 'selecciones', 'quien gana', 'argentina', 'argentino',
-    'guerra fria', 'historia', 'inteligencia artificial', 'ia', 'explicame', 'cuentame',
-    'que sabes', 'por que', 'porque', 'como funciona', 'que significa', 'cual es', 'cuales son'
-  ];
-
-  return signals.some(signal => n.includes(signal))
-    || /^(que|como|cual|cuales|quien|quienes|donde|cuando|por que|porque|me puedes|puedes|opinas|si|simon)/.test(n);
+  return !hasOperationalSignals(text);
 }
 
 function isLikelyOperationalMessage(text = '') {
-  const n = normalizeForIntent(text);
-  if (!n) return false;
-  if (isLikelyGeneralConversation(text)) return false;
-  return [
-    'precio', 'producto', 'catalogo', 'categoria', 'imagen', 'color', 'stock', 'variante',
-    'crear', 'agregar', 'anadir', 'editar', 'actualizar', 'eliminar', 'borrar',
-    'activar', 'desactivar', 'ocultar', 'mostrar', 'importar', 'url', 'link', 'cotizacion'
-  ].some(k => n.includes(k));
+  return hasOperationalSignals(text);
 }
 
 function buildOfflineGeneralConversationText(userMessage = '') {
@@ -204,12 +229,15 @@ function buildOfflineGeneralConversationText(userMessage = '') {
   }
 
   if (n.includes('futbol') || n.includes('mundial')) {
-    return 'Sí puedo conversar de fútbol. Si quieres, te hablo de favoritos, clasificados, formato del Mundial o historia del torneo. Si me dices el año exacto, te respondo mejor.';
+    if (n.includes('2026')) {
+      return 'Si hablas del Mundial 2026, Argentina sigue siendo candidata fuerte por estructura y experiencia, pero en torneos cortos el momento del equipo y los cruces pesan mucho.';
+    }
+    return 'Si quieres, te doy una lectura directa del Mundial: favoritos, cruces y qué selección llega mejor.';
   }
 
   const topic = String(userMessage || '').replace(/\s+/g, ' ').trim().slice(0, 120);
   if (topic) {
-    return `Sí, te entiendo. Si quieres, hablamos de "${topic}" y te doy una respuesta directa.`;
+    return buildHumanFallbackReply(topic);
   }
 
   return '';
