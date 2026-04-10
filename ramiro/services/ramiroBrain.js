@@ -91,7 +91,7 @@ async function callGeminiBrain(prompt, temperature = 0.25) {
  */
 function buildFallbackDecision(userMessage, question = null, rawResponse = null) {
   const cleanRaw = String(rawResponse || '').trim();
-  const hasUsefulRaw = cleanRaw.length >= 12;
+  const hasUsefulRaw = cleanRaw.length >= 12 && !isLowValueConversationText(cleanRaw);
   let fallbackText;
   if (hasUsefulRaw) {
     fallbackText = cleanRaw.slice(0, 2200);
@@ -603,7 +603,8 @@ Responde SOLO en JSON válido según el esquema indicado.`;
         generalText = buildOfflineGeneralConversationText(userMessage);
       }
     }
-    const fb = buildFallbackDecision(userMessage, null, generalText || rawText);
+    const rawCandidate = !isLowValueConversationText(rawText) ? rawText : '';
+    const fb = buildFallbackDecision(userMessage, null, generalText || rawCandidate);
     return { decision: fb, legacy: translateBrainToLegacy(fb) };
   }
 
