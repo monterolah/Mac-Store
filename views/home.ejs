@@ -5,6 +5,93 @@ const heroBanners = banners && banners.length ? banners : [];
 const heroProduct = featured && featured[0];
 %>
 
+<style>
+  .home-promos-section {
+    background: #fff;
+    padding: 60px 24px;
+  }
+  .home-promos-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+    align-items: center;
+    margin-top: 32px;
+  }
+  .home-promos-item {
+    text-align: center;
+    width: min(240px, 100%);
+  }
+  .home-promos-item img {
+    max-height: 80px;
+    max-width: 240px;
+    width: auto;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+  }
+  .home-cuotas-section {
+    background: #f5f5f7;
+    padding: 32px 24px;
+    border-top: 1px solid #e8e8ed;
+  }
+  .home-cuotas-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    align-items: center;
+  }
+  .home-cuotas-item {
+    background: #fff;
+    border-radius: 12px;
+    padding: 10px 18px;
+    border: 1px solid #e8e8ed;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 100px;
+    justify-content: center;
+  }
+  @media (max-width: 640px) {
+    .home-promos-section,
+    .home-cuotas-section {
+      padding: 38px 14px;
+    }
+    .home-promos-row {
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .home-promos-item {
+      width: 100%;
+      max-width: 320px;
+    }
+    .home-promos-item img {
+      max-width: 190px;
+      max-height: 64px;
+    }
+    .home-cuotas-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .home-cuotas-item {
+      min-width: 0;
+      width: 100%;
+      padding: 10px 12px;
+    }
+    .home-cuotas-item img {
+      max-width: 58px;
+      height: 24px !important;
+    }
+  }
+  @media (max-width: 420px) {
+    .home-cuotas-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
 <!-- ══ HERO — full screen con imagen de fondo ══ -->
 <section class="ms-hero-wrap">
   <% if(heroBanners.length){ %>
@@ -212,16 +299,17 @@ const prodByCat = {};
 
 <!-- ══ ANUNCIOS / PROMOCIONES ══ -->
 <% if(announcements && announcements.length){ %>
-<section style="background:#fff;padding:60px 24px">
+<section class="home-promos-section" style="background:#fff;padding:60px 24px">
   <div class="ms-inner">
     <div class="ms-section-head" data-reveal>
       <h2>Promociones y financiamiento</h2>
       <p>Facilidades de pago y ofertas exclusivas</p>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;align-items:center;margin-top:32px" data-stagger>
+    <div class="home-promos-row" style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;align-items:center;margin-top:32px" data-stagger>
       <% announcements.forEach(a=>{ %>
       <% if(a.link){ %><a href="<%=a.link%>" style="display:block;transition:transform .2s" onmouseover="this.style.transform='translateY(-4px)'" onmouseout="this.style.transform=''"<% } else { %><div<% } %>
         data-reveal
+        class="home-promos-item"
         style="text-align:center">
         <% if(a.image_url){ %>
         <img src="<%=a.image_url%>" alt="<%=a.title||'Anuncio'%>"
@@ -239,14 +327,14 @@ const prodByCat = {};
 <%- include('partials/footer') %>
 
 <% if(settings && settings.cuotas_active !== false && settings.cuota_logos && settings.cuota_logos.length){ %>
-<section style="background:#f5f5f7;padding:32px 24px;border-top:1px solid #e8e8ed">
+<section class="home-cuotas-section" style="background:#f5f5f7;padding:32px 24px;border-top:1px solid #e8e8ed">
   <div class="ms-inner">
     <div style="text-align:center;margin-bottom:18px">
       <div style="font-size:13px;font-weight:700;color:#515154;text-transform:uppercase;letter-spacing:.08em">Cuotas sin intereses con</div>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center;align-items:center">
+    <div class="home-cuotas-row" style="display:flex;flex-wrap:wrap;gap:16px;justify-content:center;align-items:center">
       <% settings.cuota_logos.forEach(l=>{ %>
-      <div style="background:#fff;border-radius:12px;padding:10px 18px;border:1px solid #e8e8ed;display:flex;align-items:center;gap:8px;min-width:100px;justify-content:center">
+      <div class="home-cuotas-item" style="background:#fff;border-radius:12px;padding:10px 18px;border:1px solid #e8e8ed;display:flex;align-items:center;gap:8px;min-width:100px;justify-content:center">
         <% if(l.logo_url){ %>
         <img src="<%=l.logo_url%>" alt="<%=l.name||''%>" style="height:28px;max-width:72px;object-fit:contain" onerror="this.style.display='none'">
         <% } %>

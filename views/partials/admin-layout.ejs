@@ -92,6 +92,12 @@
       </div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
+      <button onclick="startNewRamiroChat()" title="Nuevo chat" style="background:#f5f5f7;border:none;width:30px;height:30px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#86868b" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button onclick="openRamiroHistory()" title="Ver historial de chats" style="background:#f5f5f7;border:none;width:30px;height:30px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#86868b" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 6.3L3 8"/><path d="M12 7v5l3 3"/></svg>
+      </button>
       <button onclick="openRamiroConfig()" title="Configurar Ramiro" style="background:#f5f5f7;border:none;width:30px;height:30px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#86868b" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
       </button>
@@ -111,6 +117,17 @@
     <button onclick="sendRamiro()" style="background:#0071e3;color:#fff;border:none;border-radius:12px;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
     </button>
+  </div>
+</div>
+
+<!-- Modal de historial de chats de Ramiro -->
+<div id="ramiroHistoryModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:10001;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:20px;padding:20px;width:min(560px,100%);max-height:86vh;overflow:hidden;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="font-size:18px;font-weight:700;margin:0">Historial de chats</h2>
+      <button onclick="closeRamiroHistory()" style="background:#f5f5f7;border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px">×</button>
+    </div>
+    <div id="ramiroHistoryList" style="overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px;min-height:160px"></div>
   </div>
 </div>
 
@@ -164,14 +181,77 @@
 .r-msg-error { background:#fde8e8;color:#cf2020;align-self:flex-start;font-size:12px }
 @keyframes ramiroPulse { 0%,100%{opacity:1} 50%{opacity:.5} }
 .r-thinking-dots::after { content:'...'; animation:ramiroPulse 1.2s infinite }
+
+@media (max-width: 768px) {
+  #ramiroBtn {
+    right: 14px !important;
+    bottom: 14px !important;
+    width: 52px !important;
+    height: 52px !important;
+  }
+
+  #ramiroPanel {
+    right: 10px !important;
+    left: 10px !important;
+    bottom: 74px !important;
+    width: auto !important;
+    max-height: calc(100vh - 88px) !important;
+    border-radius: 14px !important;
+  }
+
+  #ramiroMessages {
+    min-height: 180px !important;
+    max-height: calc(100vh - 260px) !important;
+  }
+
+  #ramiroConfigModal,
+  #ramiroHistoryModal {
+    padding: 10px !important;
+  }
+
+  #ramiroConfigModal > div,
+  #ramiroHistoryModal > div {
+    width: 100% !important;
+    max-height: 92vh !important;
+    border-radius: 14px !important;
+  }
+}
 </style>
 
 <script>
 const _RT = '<%= token %>';
+const _RAMIRO_CONV_KEY = 'ramiro.conversationId';
+
+function getRamiroStoredConversationId() {
+  try {
+    return localStorage.getItem(_RAMIRO_CONV_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function setRamiroStoredConversationId(value) {
+  try {
+    if (!value) localStorage.removeItem(_RAMIRO_CONV_KEY);
+    else localStorage.setItem(_RAMIRO_CONV_KEY, value);
+  } catch {}
+}
+
 let _ramiroOpen = false;
 let _ramiroHistory = [];
 let _ramiroConfig = {};
 let _ramiroLoaded = false;
+let _ramiroConversationId = getRamiroStoredConversationId();
+
+function formatDateShort(v) {
+  try {
+    const d = (v && typeof v.toDate === 'function') ? v.toDate() : new Date(v);
+    if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('es-SV', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
 
 async function loadRamiroConfig() {
   try {
@@ -195,15 +275,21 @@ async function loadRamiroConfig() {
 async function toggleRamiro() {
   _ramiroOpen = !_ramiroOpen;
   const panel = document.getElementById('ramiroPanel');
+  if (!panel) return;
   if (_ramiroOpen) {
     panel.classList.add('open');
     if (!_ramiroLoaded) {
       await loadRamiroConfig();
-      const greeting = _ramiroConfig.greeting || '¡Hola! Soy Ramiro, tu asistente de MacStore. ¿En qué te ayudo hoy?';
-      addRamiroMsg(greeting, 'bot');
+      const restored = await restoreRamiroConversation();
+      if (!restored) {
+        const greeting = _ramiroConfig.greeting || '¡Hola! Soy Ramiro, tu asistente de MacStore. ¿En qué te ayudo hoy?';
+        addRamiroMsg(greeting, 'bot');
+        _ramiroHistory = [{ role: 'bot', text: greeting }];
+      }
       _ramiroLoaded = true;
     }
-    document.getElementById('ramiroInput').focus();
+    const input = document.getElementById('ramiroInput');
+    if (input) input.focus();
   } else {
     panel.classList.remove('open');
   }
@@ -211,6 +297,7 @@ async function toggleRamiro() {
 
 function addRamiroMsg(text, role) {
   const box = document.getElementById('ramiroMessages');
+  if (!box) return null;
   const div = document.createElement('div');
   div.className = 'r-msg r-msg-' + role;
   if (role === 'thinking') div.innerHTML = '<span class="r-thinking-dots">Ramiro está pensando</span>';
@@ -267,7 +354,8 @@ async function callRamiroChat(message) {
     body: JSON.stringify({
       message,
       history: _ramiroHistory.slice(-12),
-      pageContext: window.location.pathname
+      pageContext: window.location.pathname,
+      conversationId: _ramiroConversationId || undefined
     })
   });
   return await r.json();
@@ -283,6 +371,11 @@ function handleRamiroResponse(data) {
   if (data.message) {
     addRamiroMsg(data.message, 'bot');
     _ramiroHistory.push({ role: 'bot', text: data.message });
+  }
+
+  if (data.conversationId) {
+    _ramiroConversationId = data.conversationId;
+    setRamiroStoredConversationId(_ramiroConversationId);
   }
 
   // Mostrar resultado de acción
@@ -306,6 +399,126 @@ function handleRamiroResponse(data) {
   // Ejecutar navegación
   if (data.action === 'NAVIGATE' && data.data?.url) {
     setTimeout(() => { window.location.href = data.data.url; }, 1200);
+  }
+}
+
+function clearRamiroPanelMessages() {
+  const box = document.getElementById('ramiroMessages');
+  box.innerHTML = '';
+}
+
+function startNewRamiroChat() {
+  _ramiroConversationId = '';
+  setRamiroStoredConversationId('');
+  _ramiroHistory = [];
+  clearRamiroPanelMessages();
+
+  const greeting = _ramiroConfig.greeting || '¡Hola! Soy Ramiro, tu asistente de MacStore. ¿En qué te ayudo hoy?';
+  addRamiroMsg(greeting, 'bot');
+  _ramiroHistory = [{ role: 'bot', text: greeting }];
+
+  if (!_ramiroOpen) {
+    toggleRamiro();
+  }
+}
+
+function renderRamiroConversationMessages(messages) {
+  _ramiroHistory = [];
+  clearRamiroPanelMessages();
+
+  for (const m of messages) {
+    const role = m.role === 'user' ? 'user' : 'bot';
+    addRamiroMsg(String(m.text || ''), role);
+    _ramiroHistory.push({ role, text: String(m.text || '') });
+    if (m.actionResult && m.actionResult.ok) {
+      const ar = m.actionResult;
+      const msgs = {
+        update: '✅ Producto actualizado en Firestore',
+        delete: '🗑️ Producto eliminado permanentemente',
+        bulk: `✅ ${ar.affected || 0} productos afectados`,
+        memory: '🧠 Memoria actualizada',
+        create: '✅ Producto creado correctamente',
+        sync: `🔄 Sincronización completa (${ar.updated || 0} actualizados, ${ar.created || 0} nuevos)`
+      };
+      addRamiroMsg(msgs[ar.type] || '✅ Acción completada', 'action');
+    }
+  }
+}
+
+async function restoreRamiroConversation() {
+  const convId = String(_ramiroConversationId || getRamiroStoredConversationId() || '').trim();
+  if (!convId) return false;
+  try {
+    const r = await fetch('/api/ramiro/history/' + encodeURIComponent(convId), {
+      headers: { 'Authorization': 'Bearer ' + _RT }
+    });
+    const data = await r.json();
+    const messages = Array.isArray(data.messages) ? data.messages : [];
+    if (!messages.length) {
+      setRamiroStoredConversationId('');
+      _ramiroConversationId = '';
+      return false;
+    }
+
+    _ramiroConversationId = convId;
+    setRamiroStoredConversationId(convId);
+    renderRamiroConversationMessages(messages);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function openRamiroHistory() {
+  const modal = document.getElementById('ramiroHistoryModal');
+  const list = document.getElementById('ramiroHistoryList');
+  list.innerHTML = '<div style="font-size:12px;color:#86868b;padding:8px">Cargando historial...</div>';
+  modal.classList.add('open');
+
+  try {
+    const r = await fetch('/api/ramiro/history', {
+      headers: { 'Authorization': 'Bearer ' + _RT }
+    });
+    const data = await r.json();
+    const rows = Array.isArray(data.conversations) ? data.conversations : [];
+    if (!rows.length) {
+      list.innerHTML = '<div style="font-size:12px;color:#86868b;padding:8px">Aún no hay conversaciones guardadas.</div>';
+      return;
+    }
+
+    list.innerHTML = rows.map(c => `
+      <button onclick="openRamiroConversation('${String(c.conversationId || '').replace(/'/g, '')}')" style="text-align:left;border:1px solid #e8e8ed;background:#fff;border-radius:12px;padding:10px 12px;cursor:pointer">
+        <div style="font-size:12px;color:#111;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${String(c.title || 'Conversación').replace(/</g,'&lt;')}</div>
+        <div style="font-size:11px;color:#6b7280;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${String(c.preview || '').replace(/</g,'&lt;')}</div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:4px">${Number(c.messageCount) || 0} mensajes · ${formatDateShort(c.lastAt)}</div>
+      </button>
+    `).join('');
+  } catch (e) {
+    list.innerHTML = `<div style="font-size:12px;color:#b91c1c;padding:8px">${(e && e.message) || 'No se pudo cargar el historial'}</div>`;
+  }
+}
+
+function closeRamiroHistory() {
+  document.getElementById('ramiroHistoryModal').classList.remove('open');
+}
+
+async function openRamiroConversation(conversationId) {
+  if (!conversationId) return;
+  try {
+    const r = await fetch('/api/ramiro/history/' + encodeURIComponent(conversationId), {
+      headers: { 'Authorization': 'Bearer ' + _RT }
+    });
+    const data = await r.json();
+    const messages = Array.isArray(data.messages) ? data.messages : [];
+
+    _ramiroConversationId = conversationId;
+    setRamiroStoredConversationId(_ramiroConversationId);
+    renderRamiroConversationMessages(messages);
+
+    closeRamiroHistory();
+    if (!_ramiroOpen) await toggleRamiro();
+  } catch (e) {
+    addRamiroMsg('No pude abrir ese historial. Intenta de nuevo.', 'error');
   }
 }
 

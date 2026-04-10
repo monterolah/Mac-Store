@@ -1,6 +1,76 @@
 <%- include('partials/header', {title:product.name, description:product.description}) %>
 
-<div style="padding:44px 22px 80px;max-width:900px;margin:0 auto">
+<style>
+  .product-page {
+    padding: 44px 22px 80px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .product-layout {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 52px !important;
+    align-items: start !important;
+  }
+  .product-media {
+    position: sticky !important;
+    top: 90px !important;
+  }
+  .product-installments-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+  }
+  .product-specs-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    margin-bottom: 24px !important;
+  }
+  .product-related-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important;
+    gap: 18px !important;
+  }
+  @media (max-width: 900px) {
+    .product-page {
+      padding: 32px 16px 64px;
+    }
+    .product-layout {
+      grid-template-columns: 1fr !important;
+      gap: 24px !important;
+    }
+    .product-media {
+      position: static !important;
+      top: auto !important;
+    }
+  }
+  @media (max-width: 640px) {
+    .product-page {
+      padding: 24px 14px 56px;
+    }
+    .product-installments-grid,
+    .product-specs-grid {
+      grid-template-columns: 1fr !important;
+    }
+    .product-related-grid {
+      grid-template-columns: 1fr !important;
+      gap: 14px !important;
+    }
+    .product-cta-row {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 10px !important;
+      margin: 18px 0 24px !important;
+    }
+    .product-cta-row a {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+</style>
+
+<div class="product-page" style="padding:44px 22px 80px;max-width:900px;margin:0 auto">
   <div style="display:flex;gap:5px;font-size:13px;color:#86868b;margin-bottom:24px;flex-wrap:wrap;align-items:center">
     <a href="/" style="color:#86868b;transition:color .2s" onmouseover="this.style.color='#1d1d1f'" onmouseout="this.style.color='#86868b'">MacStore</a>
     <span style="margin:0 3px">/</span>
@@ -11,10 +81,10 @@
     <span style="color:#1d1d1f"><%=product.name%></span>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:52px;align-items:start">
+  <div class="product-layout" style="display:grid;grid-template-columns:1fr 1fr;gap:52px;align-items:start">
 
     <!-- IMAGEN -->
-    <div style="position:sticky;top:90px">
+    <div class="product-media" style="position:sticky;top:90px">
       <!-- CONTENEDOR CON GLOW -->
       <div style="position:relative;display:flex;align-items:center;justify-content:center;padding:48px 40px;aspect-ratio:1;overflow:hidden">
         <!-- GLOW ANIMADO -->
@@ -132,7 +202,7 @@
       <% if(product.price > 150 && product.enable_installments !== false){ %>
       <div style="background:#f5f5f7;border-radius:14px;padding:16px;margin:16px 0">
         <div style="font-size:12px;color:#86868b;font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px">Cuotas sin intereses</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="product-installments-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div style="background:#fff;border-radius:10px;padding:12px;text-align:center">
             <div style="font-size:11px;color:#86868b;margin-bottom:3px">6 cuotas</div>
             <div style="font-size:20px;font-weight:700;letter-spacing:-.03em" id="cuota6">$<%=(product.price/6).toFixed(2)%></div>
@@ -147,7 +217,7 @@
       </div>
       <% } %>
 
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin:20px 0 28px">
+      <div class="product-cta-row" style="display:flex;gap:10px;flex-wrap:wrap;margin:20px 0 28px">
         <% if(settings.store_whatsapp){ %>
         <a id="buyBtn" href="https://wa.me/<%=settings.store_whatsapp%>?text=Hola%2C%20quiero%20comprar%20<%=encodeURIComponent(product.name)%>%20(<%=encodeURIComponent(formatPrice(product.price))%>)"
            target="_blank"
@@ -171,7 +241,7 @@
       <% const sk = Object.keys(product.specs||{}); %>
       <% if(sk.length){ %>
       <div style="font-size:13px;font-weight:600;margin-bottom:12px">Especificaciones</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px">
+      <div class="product-specs-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px">
         <% sk.forEach(k=>{ %>
         <div style="background:#f5f5f7;border-radius:12px;padding:12px 14px;transition:background .2s" onmouseover="this.style.background='#e8e8ed'" onmouseout="this.style.background='#f5f5f7'">
           <div style="font-size:10px;color:#86868b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;font-weight:500"><%=k%></div>
@@ -230,7 +300,7 @@
   <% if(related&&related.length){ %>
   <div style="margin-top:64px">
     <h2 style="font-size:24px;font-weight:700;letter-spacing:-.045em;margin-bottom:24px">También te puede interesar</h2>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px">
+    <div class="product-related-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:18px">
       <% related.forEach(r=>{ %>
       <a href="/producto/<%=r.slug%>" style="background:#f5f5f7;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;text-decoration:none;color:inherit;transition:transform .3s,box-shadow .3s" onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
         <div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;padding:20px;background:#fff;overflow:hidden">

@@ -177,13 +177,65 @@ async function syncProductsFromArray(rawProducts, sourceUrl = '') {
   return { ok: true, created, updated, total: rawProducts.length };
 }
 
+// Alias para modo agente (nombres más explícitos)
+async function searchCatalogProducts(input) {
+  const filters = (input && typeof input === 'object') ? input : { nameContains: String(input || '') };
+  return searchProducts(filters);
+}
+
+async function createCatalogProduct(product) {
+  return createProduct(product || {});
+}
+
+async function updateCatalogProduct(productId, updates) {
+  return updateProduct(productId, updates || {});
+}
+
+async function deleteCatalogProduct(productId) {
+  return deleteProduct(productId);
+}
+
+async function hideCatalogProduct(productId) {
+  return hideProduct(productId);
+}
+
+async function bulkCatalogAction({ ids = [], operation } = {}) {
+  const db = getFirestore();
+  if (!Array.isArray(ids) || !ids.length) {
+    throw new Error('No hay ids para la acción masiva');
+  }
+
+  if (operation === 'delete') {
+    await Promise.all(ids.map(id => db.collection('products').doc(id).delete()));
+    return { ok: true, operation, affected: ids.length };
+  }
+
+  if (operation === 'hide' || operation === 'deactivate') {
+    await Promise.all(ids.map(id => db.collection('products').doc(id).update({ active: false, updatedAt: new Date() })));
+    return { ok: true, operation, affected: ids.length };
+  }
+
+  if (operation === 'show' || operation === 'activate') {
+    await Promise.all(ids.map(id => db.collection('products').doc(id).update({ active: true, updatedAt: new Date() })));
+    return { ok: true, operation, affected: ids.length };
+  }
+
+  throw new Error(`Operación masiva no soportada: ${operation}`);
+}
+
 module.exports = {
   searchProducts,
+  searchCatalogProducts,
   createProduct,
+  createCatalogProduct,
   updateProduct,
+  updateCatalogProduct,
   hideProduct,
+  hideCatalogProduct,
   showProduct,
   deleteProduct,
+  deleteCatalogProduct,
   bulkDeleteWithoutImage,
+  bulkCatalogAction,
   syncProductsFromArray,
 };

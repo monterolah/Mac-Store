@@ -114,6 +114,7 @@ async function thinkRamiro(opts) {
     persistentHistory = '',
     quoteSummary = '',
     recentHistory = '',
+    projectContext = '',
   } = opts;
 
   // Cargar memoria del usuario
@@ -129,7 +130,7 @@ async function thinkRamiro(opts) {
   const systemPrompt = buildRamiroSystemPrompt({
     storeName, personality, notes, memorySummary,
     catalogSummary, quoteSummary, persistentHistory,
-    implicitProduct, autonomousMode,
+    implicitProduct, autonomousMode, projectContext,
   });
 
   const fullPrompt = `${systemPrompt}

@@ -1,5 +1,56 @@
 <%- include('partials/header', {title:category.name, description:category.description||''}) %>
-<div style="padding:44px 22px 80px;max-width:1100px;margin:0 auto">
+<style>
+  .category-page {
+    padding: 44px 22px 80px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .category-sort-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+  }
+  .category-product-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+    gap: 18px !important;
+  }
+  @media (max-width: 900px) {
+    .category-page {
+      padding: 32px 16px 64px;
+    }
+    .category-product-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 14px !important;
+    }
+  }
+  @media (max-width: 640px) {
+    .category-page {
+      padding: 24px 14px 56px;
+    }
+    .category-sort-row {
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .sort-btn {
+      width: 100%;
+      text-align: center;
+      padding: 9px 12px;
+      font-size: 13px;
+    }
+    .category-product-grid {
+      grid-template-columns: 1fr !important;
+      gap: 12px !important;
+    }
+    .ms-card-img {
+      height: 190px;
+      padding: 10px;
+    }
+  }
+</style>
+<div class="category-page" style="padding:44px 22px 80px;max-width:1100px;margin:0 auto">
   <div style="display:flex;gap:5px;font-size:13px;color:#86868b;margin-bottom:20px;flex-wrap:wrap">
     <a href="/" style="color:#86868b">MacStore</a>
     <span>/ <%=category.name%></span>
@@ -16,7 +67,7 @@
   <% if(category.description){ %><p style="font-size:16px;color:#86868b;margin-bottom:20px"><%=category.description%></p><% } %>
 
   <!-- Ordenamiento -->
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px;flex-wrap:wrap">
+  <div class="category-sort-row" style="display:flex;align-items:center;gap:10px;margin-bottom:28px;flex-wrap:wrap">
     <span style="font-size:13px;color:#86868b">Ordenar por:</span>
     <button onclick="sortProducts('default')" class="sort-btn active" id="sort-default">Destacados</button>
     <button onclick="sortProducts('price-asc')" class="sort-btn" id="sort-price-asc">Precio: menor a mayor</button>
@@ -29,7 +80,7 @@
   </style>
 
   <% if(products&&products.length){ %>
-  <div id="prodGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px">
+  <div id="prodGrid" class="category-product-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px">
     <% products.forEach(p=>{ %>
     <%
       const pvars = Array.isArray(p.variants) ? p.variants : [];

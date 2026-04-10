@@ -1,10 +1,13 @@
 const express = require('express');
+const path = require('path');
 const { getFirestore } = require('../db/firebase');
 const { requireAdminAPI } = require('../middleware/auth');
 const { thinkRamiro } = require('../ramiro/services/ramiroBrain');
 const { readUrlContent, extractProductsFromUrl } = require('../ramiro/services/ramiroUrlReader');
 const { syncProductsFromArray } = require('../ramiro/services/ramiroCatalogTools');
 const { learnPattern } = require('../ramiro/services/ramiroMemory');
+const { buildProjectContextSnapshot } = require('../ramiro/services/ramiroProjectContext');
+const { runRamiroTool } = require('../ramiro/services/ramiroAgent');
 
 const router = express.Router();
 
@@ -51,6 +54,72 @@ function normalizeForMatch(value) {
     .trim();
 }
 
+function hasAnyStem(text, stems = []) {
+  const normalized = normalizeForMatch(text);
+  return stems.some(stem => normalized.includes(normalizeForMatch(stem)));
+}
+
+function hasAllStemGroups(text, groups = []) {
+  const normalized = normalizeForMatch(text);
+  return groups.every(group => {
+    const options = Array.isArray(group) ? group : [group];
+    return options.some(option => normalized.includes(normalizeForMatch(option)));
+  });
+}
+
+function isLikelyOperationalIntent(text = '') {
+  const normalized = normalizeForMatch(text);
+  return hasAnyStem(normalized, [
+    'agreg', 'anad', 'añad', 'cre', 'sub', 'mete', 'pon',
+    'edit', 'actualiz', 'modific', 'cambi', 'arregl',
+    'elimin', 'borr', 'quit', 'desactiv', 'activ', 'ocult',
+    'import', 'sincron', 'catalogo', 'link', 'url', 'imagen',
+    'foto', 'precio', 'stock', 'color', 'variante'
+  ]);
+}
+
+function hasAmbiguousReferenceIntent(text = '') {
+  const normalized = normalizeForMatch(text);
+  const hasDemonstrative = hasAnyStem(normalized, ['eso', 'ese', 'esa', 'este', 'esta', 'aquello', 'anterior']);
+  const hasActionVerb = hasAnyStem(normalized, [
+    'quita', 'quit', 'borra', 'elimina', 'cambia', 'edita', 'arregla',
+    'pon', 'actualiza', 'activa', 'desactiva', 'oculta', 'muestra'
+  ]);
+  return hasDemonstrative && hasActionVerb;
+}
+
+function inferProductFromConversationRows(conversationRows = [], allProducts = []) {
+  if (!Array.isArray(conversationRows) || !conversationRows.length || !Array.isArray(allProducts) || !allProducts.length) {
+    return null;
+  }
+
+  for (let i = conversationRows.length - 1; i >= 0; i -= 1) {
+    const row = conversationRows[i] || {};
+    const key = row?.actionResult?.productId || row?.actionResult?.id || row?.data?.productId || null;
+    if (key) {
+      const found = resolveProductByIdOrSlug(allProducts, key);
+      if (found) return found;
+    }
+  }
+
+  const recentUserTexts = conversationRows
+    .filter(r => r && r.role === 'user')
+    .map(r => String(r.text || ''))
+    .slice(-8)
+    .reverse();
+
+  for (const text of recentUserTexts) {
+    const n = normalizeForMatch(text);
+    const byName = allProducts.find(p => {
+      const productName = normalizeForMatch(p.name || '');
+      return productName && (n.includes(productName) || productName.includes(n));
+    });
+    if (byName) return byName;
+  }
+
+  return null;
+}
+
 function slugify(str) {
   return (String(str || '')
     .trim()
@@ -95,6 +164,14 @@ function parsePriceFromText(text) {
   if (!m) return null;
   const n = Number(String(m[1]).replace(',', '.'));
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function stripTrailingPriceFromName(text) {
+  return String(text || '')
+    .replace(/\s+(?:a|en|por)\s*\$?\s*[0-9]{2,6}(?:[\.,][0-9]{1,2})?\s*$/i, '')
+    .replace(/\s*\$\s*[0-9]{2,6}(?:[\.,][0-9]{1,2})?\s*$/i, '')
+    .replace(/[.,;:]+$/g, '')
+    .trim();
 }
 
 function getProductIdFromPageContext(pageContext) {
@@ -200,8 +277,9 @@ function buildLearnedMemoryEntry(originalMsg, action, data, actionResult, allPro
 function isExplicitConfirmation(message) {
   const norm = normalizeForMatch(message);
   return /^(si|sí|confirmo|confirmado|dale|hazlo|hace lo|ejecuta|procede|ok(?:ay)?|de una)$/.test(norm)
-    || /^(si confirma|sí confirma|elimina|borra)$/.test(norm)
-    || /\b(confirma|confirmado|hazlo|ejecuta|procede)\b/.test(norm);
+    || /^(si confirma|sí confirma|elimina|borra|asi|así|asi mero|así mero)$/.test(norm)
+    || /\b(confirma|confirmado|hazlo|ejecuta|procede|agregalo|agregalos|anadelo|anadelos|añadelo|añadelos|ahorita)\b/.test(norm)
+    || /^(?:asi|así)\s+.+\s+(?:ahorita|de una)$/i.test(norm);
 }
 
 function buildRiskSummary(action, data) {
@@ -246,6 +324,116 @@ function isAmbiguousShortCommand(message) {
     || /^(?:hey\s+)?(?:quita|cambia|edita|arregla|pon|borra|elimina)\s+(?:eso|esto|ese|esa|aquel|aquello)$/i.test(raw);
 }
 
+function shouldAutoExecute(decision, autonomousMode = true) {
+  if (!autonomousMode) return false;
+  if (!decision || typeof decision !== 'object') return false;
+  if (decision.needsClarification) return false;
+  if (decision.requiresConfirmation) return false;
+
+  const safeActions = ['answer', 'guide', 'search', 'extract', 'update', 'create', 'hide'];
+  return safeActions.includes(String(decision?.action?.type || 'none'));
+}
+
+function formatAgentToolMessage(agentResult, decision) {
+  if (agentResult?.type === 'search_results') {
+    const count = Array.isArray(agentResult.results) ? agentResult.results.length : 0;
+    return `Encontré ${count} resultado(s).`;
+  }
+  if (agentResult?.type === 'url_read') {
+    return 'Listo, leí el contenido de la URL y preparé el resumen.';
+  }
+  if (agentResult?.type === 'import_preview') {
+    return `Encontré ${Number(agentResult.found) || 0} productos en la URL. Te muestro una vista previa para confirmar.`;
+  }
+  if (agentResult?.type === 'import_done') {
+    const created = Number(agentResult?.result?.created) || 0;
+    const updated = Number(agentResult?.result?.updated) || 0;
+    return `Importación completada. Creados: ${created}, actualizados: ${updated}.`;
+  }
+  if (agentResult?.type === 'action_done') {
+    return decision?.response || 'Acción ejecutada correctamente.';
+  }
+  return decision?.response || agentResult?.response || 'Listo.';
+}
+
+function sanitizeConversationId(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+}
+
+function generateConversationId(adminKey) {
+  const safeAdmin = String(adminKey || 'admin').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `c_${safeAdmin}_${Date.now()}_${rand}`;
+}
+
+function toEpoch(input) {
+  if (!input) return 0;
+  if (typeof input === 'number') return input;
+  if (typeof input === 'string') {
+    const t = Date.parse(input);
+    return Number.isFinite(t) ? t : 0;
+  }
+  if (input && typeof input.toDate === 'function') {
+    try { return input.toDate().getTime(); } catch { return 0; }
+  }
+  return 0;
+}
+
+function buildEvalSummary(rows = []) {
+  const total = rows.length;
+  const byResultType = {};
+  const byIntent = {};
+  let autoExecuted = 0;
+  let clarification = 0;
+  let confirmationRequired = 0;
+  let actionAttempts = 0;
+  let actionSuccess = 0;
+  let actionErrors = 0;
+
+  for (const r of rows) {
+    const resultType = String(r.resultType || 'unknown');
+    byResultType[resultType] = (byResultType[resultType] || 0) + 1;
+
+    const intent = String(r.intentType || r.decision?.mode || 'unknown');
+    byIntent[intent] = (byIntent[intent] || 0) + 1;
+
+    if (r.autoExecuted === true) autoExecuted += 1;
+    if (r.resultType === 'clarification' || r.needsClarification === true) clarification += 1;
+    if (r.resultType === 'confirmation_required' || r.needsConfirmation === true) confirmationRequired += 1;
+
+    const hasAction = Boolean(r.legacyAction || r.decision?.action?.type) && String(r.resultType || '') !== 'message';
+    if (hasAction) {
+      actionAttempts += 1;
+      if (r.actionOk === true) actionSuccess += 1;
+      if (r.actionOk === false) actionErrors += 1;
+    }
+  }
+
+  const safeRate = (num, den) => den > 0 ? Number(((num / den) * 100).toFixed(2)) : 0;
+  const sortedIntent = Object.entries(byIntent).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  return {
+    totalInteractions: total,
+    autoExecutionRatePct: safeRate(autoExecuted, total),
+    clarificationRatePct: safeRate(clarification, total),
+    confirmationRatePct: safeRate(confirmationRequired, total),
+    actionSuccessRatePct: safeRate(actionSuccess, actionAttempts),
+    actionErrorRatePct: safeRate(actionErrors, actionAttempts),
+    counts: {
+      autoExecuted,
+      clarification,
+      confirmationRequired,
+      actionAttempts,
+      actionSuccess,
+      actionErrors,
+    },
+    byResultType,
+    topIntents: sortedIntent.map(([intent, count]) => ({ intent, count })),
+  };
+}
+
 function buildStyleHintsFromMessages(messages) {
   const msgs = (messages || []).slice(-20).map(m => String(m || '').trim()).filter(Boolean);
   if (!msgs.length) return '';
@@ -270,6 +458,8 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
 
     const db = getFirestore();
     const adminKey = String(req.admin?.email || req.admin?.id || 'admin').toLowerCase();
+    const incomingConversationId = sanitizeConversationId(req.body?.conversationId);
+    const conversationId = incomingConversationId || generateConversationId(adminKey);
     const pendingConfirmation = ramiroPendingConfirmations.get(adminKey);
     if (pendingConfirmation && pendingConfirmation.expiresAt < Date.now()) {
       ramiroPendingConfirmations.delete(adminKey);
@@ -286,9 +476,13 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     // Historial persistente del chat (últimos 80 turnos)
     const transcriptSnap = await db.collection('ramiro_transcripts')
       .orderBy('createdAt', 'desc')
-      .limit(80)
+      .limit(300)
       .get();
-    const transcriptRows = transcriptSnap.docs.map(d => d.data()).reverse();
+    const transcriptRows = transcriptSnap.docs
+      .map(d => d.data())
+      .filter(r => String(r?.adminEmail || '').toLowerCase() === String(req.admin?.email || '').toLowerCase())
+      .reverse();
+    const conversationRows = transcriptRows.filter(r => sanitizeConversationId(r?.conversationId) === conversationId);
     const persistentConversation = transcriptRows
       .map(m => `${m.role === 'assistant' ? 'Ramiro' : 'Admin'}: ${String(m.text || '').slice(0, 350)}`)
       .join('\n');
@@ -312,13 +506,8 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     const pageProductKey = getProductIdFromPageContext(pageContext);
     let implicitTargetProduct = resolveProductByIdOrSlug(allProducts, pageProductKey);
     if (!implicitTargetProduct) {
-      const lastActionWithProduct = [...transcriptRows].reverse().find(m =>
-        m?.actionResult?.productId || m?.actionResult?.id || m?.data?.productId
-      );
-      const lastKey = lastActionWithProduct?.actionResult?.productId
-        || lastActionWithProduct?.actionResult?.id
-        || lastActionWithProduct?.data?.productId;
-      implicitTargetProduct = resolveProductByIdOrSlug(allProducts, lastKey);
+      implicitTargetProduct = inferProductFromConversationRows(conversationRows, allProducts)
+        || inferProductFromConversationRows(transcriptRows, allProducts);
     }
 
     // Cargar settings de la tienda
@@ -340,9 +529,12 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
       .map(m => `${m.role === 'user' ? 'Admin' : 'Ramiro'}: ${String(m.text || '').slice(0, 300)}`)
       .join('\n');
 
+    const projectContext = buildProjectContextSnapshot(path.join(__dirname, '..'));
+
     // ── NUEVO BRAIN: Gemini con prompt estructurado y schema JSON claro ──────────
     let plan = null;
     let brainLegacy = null;
+    let brainDecision = null;
     let response = { message: '', action: null, data: null };
 
     try {
@@ -358,8 +550,10 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
         persistentHistory: persistentConversation || '',
         quoteSummary: recentQuotesSummary,
         recentHistory,
+        projectContext,
       });
 
+      brainDecision = brainResult.decision || null;
       brainLegacy = brainResult.legacy;
       plan = {
         intentType: brainResult.decision?.mode || 'general',
@@ -379,6 +573,136 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
         mode: brainLegacy.mode,
         confidence: brainLegacy.confidence,
       };
+
+      if (brainDecision?.needsClarification) {
+        const clarMessage = brainDecision.question || brainDecision.response || '¿Qué dato te falta para continuar?';
+        await appendRamiroTranscript(db, {
+          role: 'user',
+          text: String(message || ''),
+          pageContext: pageContext || '',
+          conversationId,
+          adminEmail: req.admin?.email || ''
+        });
+        await appendRamiroTranscript(db, {
+          role: 'assistant',
+          text: clarMessage,
+          conversationId,
+          action: null,
+          actionResult: null,
+          adminEmail: req.admin?.email || ''
+        });
+        await db.collection('ramiro_chats').add({
+          userId: adminKey,
+          conversationId,
+          message: String(message || ''),
+          decision: brainDecision,
+          intentType: brainDecision?.mode || null,
+          resultType: 'clarification',
+          needsClarification: true,
+          needsConfirmation: false,
+          autoExecuted: false,
+          actionOk: null,
+          createdAt: new Date().toISOString(),
+        });
+        return res.json({
+          ok: true,
+          type: 'clarification',
+          autoExecuted: false,
+          decision: brainDecision,
+          message: clarMessage,
+          conversationId,
+        });
+      }
+
+      const confirmed = isExplicitConfirmation(String(message || ''));
+      if (brainDecision?.requiresConfirmation && !confirmed) {
+        const confirmMessage = brainDecision.question || brainDecision.response || 'Necesito confirmación para continuar.';
+        await appendRamiroTranscript(db, {
+          role: 'user',
+          text: String(message || ''),
+          pageContext: pageContext || '',
+          conversationId,
+          adminEmail: req.admin?.email || ''
+        });
+        await appendRamiroTranscript(db, {
+          role: 'assistant',
+          text: confirmMessage,
+          conversationId,
+          action: null,
+          actionResult: null,
+          adminEmail: req.admin?.email || ''
+        });
+        await db.collection('ramiro_chats').add({
+          userId: adminKey,
+          conversationId,
+          message: String(message || ''),
+          decision: brainDecision,
+          intentType: brainDecision?.mode || null,
+          resultType: 'confirmation_required',
+          needsClarification: false,
+          needsConfirmation: true,
+          autoExecuted: false,
+          actionOk: null,
+          createdAt: new Date().toISOString(),
+        });
+        return res.json({
+          ok: true,
+          type: 'confirmation_required',
+          autoExecuted: false,
+          decision: brainDecision,
+          message: confirmMessage,
+          conversationId,
+        });
+      }
+
+      if (shouldAutoExecute(brainDecision, autonomousMode)) {
+        try {
+          const agentResult = await runRamiroTool(brainDecision, { userId: adminKey });
+          if (agentResult?.ok) {
+            const autoMessage = formatAgentToolMessage(agentResult, brainDecision);
+            await appendRamiroTranscript(db, {
+              role: 'user',
+              text: String(message || ''),
+              pageContext: pageContext || '',
+              conversationId,
+              adminEmail: req.admin?.email || ''
+            });
+            await appendRamiroTranscript(db, {
+              role: 'assistant',
+              text: autoMessage,
+              conversationId,
+              action: brainDecision?.action?.type || null,
+              actionResult: agentResult,
+              adminEmail: req.admin?.email || ''
+            });
+            await db.collection('ramiro_chats').add({
+              userId: adminKey,
+              conversationId,
+              message: String(message || ''),
+              decision: brainDecision,
+              intentType: brainDecision?.mode || null,
+              resultType: agentResult?.type || null,
+              needsClarification: false,
+              needsConfirmation: false,
+              autoExecuted: true,
+              actionOk: true,
+              createdAt: new Date().toISOString(),
+            });
+
+            return res.json({
+              ok: true,
+              type: agentResult.type || 'message',
+              autoExecuted: true,
+              message: autoMessage,
+              conversationId,
+              decision: brainDecision,
+              toolResult: agentResult,
+            });
+          }
+        } catch (_) {
+          // Si falla el router agente, caer al flujo actual de compatibilidad.
+        }
+      }
 
     } catch (geminiErr) {
       console.error('[Ramiro] Error Brain:', geminiErr.message);
@@ -412,7 +736,18 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     const invalidUpdateAction = response.action === 'PRODUCT_UPDATE' && (!response.data?.productId || !response.data?.updates || !Object.keys(response.data.updates || {}).length);
     const invalidCreateAction = response.action === 'PRODUCT_CREATE' && !response.data?.product?.name;
     const hasCapacityEnableCommand = /(?:habilita|habilitar|activa|activar)\s+[0-9]{2,4}\s?gb\s+para\s+/i.test(String(message || ''));
-    const shouldForceDeterministic = !response.action || response.action === 'INFO' || invalidUpdateAction || invalidCreateAction || hasCapacityEnableCommand || isTemplatePlaceholder;
+    const hasNaturalBrainResponse = Boolean(String(response.message || '').trim()) && !isTemplatePlaceholder;
+    const brainAlreadyHandledConversation = hasNaturalBrainResponse
+      && !response.action
+      && ['general', 'help', 'clarification', 'confirmation'].includes(String(response.mode || '').toLowerCase())
+      && !isLikelyOperationalIntent(message || '');
+
+    const shouldForceDeterministic = response.action === 'INFO'
+      || invalidUpdateAction
+      || invalidCreateAction
+      || hasCapacityEnableCommand
+      || isTemplatePlaceholder
+      || (!brainAlreadyHandledConversation && (!response.action || isLikelyOperationalIntent(message || '')));
 
     if (shouldForceDeterministic) {
       response = { message: response.message || '', action: null, data: null };
@@ -429,9 +764,78 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
         };
       }
 
+      if (!response.action) {
+        const ambiguousRef = hasAmbiguousReferenceIntent(msgNorm);
+        if (ambiguousRef) {
+          if (implicitTargetProduct) {
+            response = {
+              message: `¿Te refieres a ${implicitTargetProduct.name}? Si me dices "sí", aplico ese cambio sobre ese producto.`,
+              action: null,
+              data: null
+            };
+          } else {
+            response = {
+              message: 'Quiero hacerlo bien: ¿a qué producto te refieres exactamente? Si me dices el nombre o abres el producto, lo ejecuto de inmediato.',
+              action: null,
+              data: null
+            };
+          }
+        }
+      }
+
+      if (!response.action) {
+        const identityIntent = hasAllStemGroups(msgNorm, [['quien', 'como'], ['eres', 'llamas', 'ramiro']])
+          || hasAllStemGroups(msgNorm, [['eres'], ['tu', 'tú'], ['ramiro']]);
+        if (identityIntent) {
+          response = {
+            message: `Soy ${ramiroName}, el asistente de MacStore. Puedo ayudarte a crear, editar, activar, desactivar, borrar e importar productos del catálogo.`,
+            action: null,
+            data: null
+          };
+        }
+      }
+
+      if (!response.action) {
+        const createHelpIntent = hasAnyStem(msgNorm, ['como', 'ayuda', 'explica', 'dime'])
+          && hasAnyStem(msgNorm, ['anad', 'anadir', 'agreg', 'cre', 'sub'])
+          && hasAnyStem(msgNorm, ['producto', 'catalogo', 'articulo']);
+        if (createHelpIntent) {
+          response = {
+            message: 'Para agregar un producto, escribime el nombre y el precio en una sola frase. Ejemplos: "añade iPhone Air a 1349", "crea MacBook Air M2 por 999" o "agrega iPad Mini $699". Si quieres, también puedes darme imagen, colores, variantes o descripción en el mismo mensaje o después.',
+            action: null,
+            data: null
+          };
+        }
+      }
+
+      if (!response.action) {
+        const removeColorHelpIntent = hasAnyStem(msgNorm, ['como', 'ayuda', 'explica', 'dime'])
+          && hasAnyStem(msgNorm, ['quit', 'elimin', 'borr'])
+          && hasAnyStem(msgNorm, ['color', 'colores']);
+        if (removeColorHelpIntent) {
+          response = {
+            message: 'Para quitar un color, dime el producto y el color en la misma frase. Ejemplos: "quita color azul a iPhone 15 Pro" o, si ya tienes abierto el producto, "quita color azul". Si quieres solo deshabilitarlo y no borrarlo, también te lo puedo hacer.',
+            action: null,
+            data: null
+          };
+        }
+      }
+
+      if (!response.action) {
+        const quotationHelpIntent = hasAnyStem(msgNorm, ['cotiz', 'presupuesto'])
+          && hasAnyStem(msgNorm, ['como', 'ayuda', 'explica', 'dime', 'mando', 'envi', 'hacer', 'saco', 'genero']);
+        if (quotationHelpIntent) {
+          response = {
+            message: 'Sí. Para mandar una cotización: 1) abre el módulo de cotizaciones en admin, 2) agrega cliente/empresa, 3) selecciona productos y cantidades, 4) define IVA, cuotas y notas, 5) genera/exporta PDF y 6) compártelo por WhatsApp o correo. Si quieres te guío paso a paso según tu caso (ej: sin IVA, con cuotas, con descuento o para cliente recurrente).',
+            action: null,
+            data: null
+          };
+        }
+      }
+
       // -2) Saludo o mensaje genérico sin contexto de acción
       if (!response.action) {
-        const greetIntent = /^(ayuda(me)?|me ayudas?|hola|hey( ramiro)?|buenas?|qu[eé] puedes?|para qu[eé] sirves?|qu[eé] haces?)\s*[.!?]*$/i.test(msg.trim());
+        const greetIntent = /^(ayuda(me)?|me ayudas?|hola+|hey+y*( ramiro)?|buenas?|qu[eé] puedes?|para qu[eé] sirves?|qu[eé] haces?)\s*[.!?]*$/i.test(msg.trim());
         if (greetIntent || isTemplatePlaceholder) {
           response = {
             message: '¿En qué te puedo ayudar?',
@@ -771,10 +1175,17 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
 
       // 5) Crear producto (si incluye nombre claro y, de preferencia, precio)
       if (!response.action) {
-        const createCmd = msg.match(/^(?:me\s+)?(?:agrega|agregar|crea|crear|anade|añade)\s+(?:producto\s+)?(.+)$/i);
+        const createCmd = msg.match(/^(?:(?:me|porfa|por favor)\s+)?(?:agrega|agregar|crea|crear|anade|añade|sube|subir|mete|pon)\s+(?:el\s+|un\s+|una\s+)?(?:producto\s+)?(.+)$/i);
         if (createCmd && !/(colores?|imagen|foto|precio)/i.test(msgNorm)) {
           const rawName = cleanText(createCmd[1], 160).replace(/[.,;]+$/, '').trim();
-          const cleanName = rawName.replace(/^(unos?|unas?)\s+/i, '').trim();
+          const cleanName = stripTrailingPriceFromName(rawName.replace(/^(unos?|unas?)\s+/i, '').trim());
+          if (!cleanName) {
+            response = {
+              message: 'Puedo crearlo, pero necesito un nombre claro para el producto.',
+              action: null,
+              data: null
+            };
+          } else {
           const slug = slugify(cleanName);
           const existing = allProducts.find(p => p.slug === slug);
           if (existing) {
@@ -804,6 +1215,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
                   }
                 }
               };
+            }
             }
           }
         }
@@ -1357,6 +1769,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
       role: 'user',
       text: String(message || ''),
       pageContext: pageContext || '',
+      conversationId,
       adminEmail: req.admin?.email || ''
     });
 
@@ -1369,13 +1782,30 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     await appendRamiroTranscript(db, {
       role: 'assistant',
       text: finalMessage,
+      conversationId,
       action: response.action || null,
       actionResult: actionResult || null,
       adminEmail: req.admin?.email || ''
     });
 
+    await db.collection('ramiro_chats').add({
+      userId: adminKey,
+      conversationId,
+      message: String(message || ''),
+      decision: brainDecision || null,
+      intentType: plan?.intentType || response.intentType || null,
+      resultType: actionResult?.type || (response.action ? 'action_attempt' : 'message'),
+      legacyAction: response.action || null,
+      needsClarification: false,
+      needsConfirmation: Boolean(plan?.needsConfirmation),
+      autoExecuted: false,
+      actionOk: actionResult?.ok ?? null,
+      createdAt: new Date().toISOString(),
+    });
+
     res.json({
       message: finalMessage,
+      conversationId,
       action: response.action,
       data: response.data,
       actionResult,
@@ -1389,6 +1819,107 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     });
 
   } catch(e) { res.status(500).json({ error: e.message, message: 'Error interno de Ramiro.' }); }
+});
+
+router.get('/eval/summary', requireAdminAPI, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 20), 1000);
+    const userId = String(req.query.userId || req.admin?.email || req.admin?.id || '').toLowerCase();
+    const db = getFirestore();
+
+    let snap;
+    if (userId) {
+      snap = await db.collection('ramiro_chats').where('userId', '==', userId).limit(limit).get();
+    } else {
+      snap = await db.collection('ramiro_chats').limit(limit).get();
+    }
+
+    let rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    rows = rows.sort((a, b) => toEpoch(b.createdAt) - toEpoch(a.createdAt)).slice(0, limit);
+
+    const summary = buildEvalSummary(rows);
+    return res.json({
+      ok: true,
+      userId: userId || null,
+      sampleSize: rows.length,
+      summary,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.get('/history', requireAdminAPI, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 1200, 100), 3000);
+    const adminEmail = String(req.admin?.email || '').toLowerCase();
+    const db = getFirestore();
+    const snap = await db.collection('ramiro_transcripts').orderBy('createdAt', 'desc').limit(limit).get();
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(r => String(r.adminEmail || '').toLowerCase() === adminEmail);
+
+    const grouped = new Map();
+    for (const row of rows) {
+      const convId = sanitizeConversationId(row.conversationId) || `legacy_${row.id}`;
+      if (!grouped.has(convId)) {
+        grouped.set(convId, {
+          conversationId: convId,
+          lastAt: row.createdAt,
+          messageCount: 0,
+          firstUserMessage: '',
+          lastAssistantMessage: '',
+        });
+      }
+      const g = grouped.get(convId);
+      g.messageCount += 1;
+      if (!g.firstUserMessage && row.role === 'user') g.firstUserMessage = String(row.text || '').slice(0, 180);
+      if (row.role === 'assistant') g.lastAssistantMessage = String(row.text || '').slice(0, 220);
+      if (toEpoch(row.createdAt) > toEpoch(g.lastAt)) g.lastAt = row.createdAt;
+    }
+
+    const conversations = [...grouped.values()]
+      .sort((a, b) => toEpoch(b.lastAt) - toEpoch(a.lastAt))
+      .slice(0, 80)
+      .map(c => ({
+        conversationId: c.conversationId,
+        title: c.firstUserMessage || 'Conversación sin título',
+        preview: c.lastAssistantMessage || c.firstUserMessage || '',
+        messageCount: c.messageCount,
+        lastAt: c.lastAt,
+      }));
+
+    return res.json({ ok: true, conversations });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.get('/history/:conversationId', requireAdminAPI, async (req, res) => {
+  try {
+    const conversationId = sanitizeConversationId(req.params.conversationId);
+    if (!conversationId) return res.status(400).json({ ok: false, error: 'conversationId inválido' });
+
+    const limit = Math.min(Math.max(Number(req.query.limit) || 1200, 100), 3000);
+    const adminEmail = String(req.admin?.email || '').toLowerCase();
+    const db = getFirestore();
+    const snap = await db.collection('ramiro_transcripts').orderBy('createdAt', 'desc').limit(limit).get();
+    const messages = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(r => String(r.adminEmail || '').toLowerCase() === adminEmail)
+      .filter(r => sanitizeConversationId(r.conversationId) === conversationId)
+      .sort((a, b) => toEpoch(a.createdAt) - toEpoch(b.createdAt))
+      .map(r => ({
+        role: r.role,
+        text: r.text,
+        createdAt: r.createdAt,
+        action: r.action || null,
+        actionResult: r.actionResult || null,
+      }));
+
+    return res.json({ ok: true, conversationId, messages });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 module.exports = router;
