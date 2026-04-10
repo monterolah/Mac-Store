@@ -107,6 +107,59 @@ function isGenericClarificationText(text = '') {
     || t.includes('no pude procesar bien ese mensaje');
 }
 
+function normalizeForIntent(text = '') {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isLikelyOperationalMessage(text = '') {
+  const n = normalizeForIntent(text);
+  if (!n) return false;
+  return [
+    'precio', 'producto', 'catalogo', 'categoria', 'imagen', 'color', 'stock', 'variante',
+    'crear', 'agregar', 'anadir', 'editar', 'actualizar', 'eliminar', 'borrar',
+    'activar', 'desactivar', 'ocultar', 'mostrar', 'importar', 'url', 'link', 'cotizacion'
+  ].some(k => n.includes(k));
+}
+
+function buildOfflineGeneralConversationText(userMessage = '') {
+  const n = normalizeForIntent(userMessage);
+  if (!n) return '';
+
+  if (n.includes('guerra fria') || n.includes('guerra fria')) {
+    return 'Claro. La Guerra Fria fue una rivalidad geopolitica (1947-1991) entre Estados Unidos y la URSS. No fue una guerra directa entre ambas potencias, sino un conflicto de influencia global con carrera armamentista nuclear, espionaje, propaganda y guerras indirectas (Corea, Vietnam, Afganistan). En Europa simbolizo la division entre bloques (OTAN y Pacto de Varsovia), con episodios criticos como Berlin y la Crisis de los Misiles en Cuba (1962). Termino con la crisis del bloque sovietico y la disolucion de la URSS en 1991.';
+  }
+
+  if (n.includes('que es la ia') || n.includes('inteligencia artificial')) {
+    return 'La inteligencia artificial es el campo que desarrolla sistemas capaces de realizar tareas cognitivas, como comprender lenguaje, reconocer patrones, predecir resultados y apoyar decisiones, usando modelos entrenados con datos.';
+  }
+
+  return '';
+}
+
+function buildOfflineGeneralDecision(userMessage = '') {
+  const text = buildOfflineGeneralConversationText(userMessage);
+  if (!text) return null;
+  return {
+    mode: 'general',
+    intent: 'offline_general_fallback',
+    confidence: 0.35,
+    requiresConfirmation: false,
+    needsClarification: false,
+    understood: 'Pregunta general atendida con fallback local por indisponibilidad temporal del modelo.',
+    entity: { type: 'unknown', id: null, name: null, filters: {}, matches: [] },
+    action: { type: 'answer', payload: {} },
+    question: null,
+    response: text,
+    memory: { shouldRemember: false, facts: [] },
+  };
+}
+
 async function buildGeneralConversationText({ storeName = 'MacStore', userMessage = '' }) {
   const msg = String(userMessage || '').trim();
   if (!msg) return '';
@@ -187,6 +240,15 @@ Responde SOLO en JSON válido según el esquema indicado.`;
     rawText = await callGeminiBrain(fullPrompt);
   } catch (e) {
     console.error('[RamiroBrain] Error llamando a Gemini:', e.message);
+    if (!isLikelyOperationalMessage(userMessage)) {
+      const offlineDecision = buildOfflineGeneralDecision(userMessage);
+      if (offlineDecision) {
+        return {
+          decision: offlineDecision,
+          legacy: translateBrainToLegacy(offlineDecision),
+        };
+      }
+    }
     return {
       decision: buildFallbackDecision(userMessage),
       legacy: translateBrainToLegacy(buildFallbackDecision(userMessage)),
@@ -199,6 +261,9 @@ Responde SOLO en JSON válido según el esquema indicado.`;
     let generalText = String(rawText || '').trim();
     if (!generalText || isGenericClarificationText(generalText)) {
       generalText = await buildGeneralConversationText({ storeName, userMessage });
+      if (!generalText && !isLikelyOperationalMessage(userMessage)) {
+        generalText = buildOfflineGeneralConversationText(userMessage);
+      }
     }
     const fb = buildFallbackDecision(userMessage, null, generalText || rawText);
     return { decision: fb, legacy: translateBrainToLegacy(fb) };
