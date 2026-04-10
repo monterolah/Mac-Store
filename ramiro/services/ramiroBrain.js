@@ -12,43 +12,66 @@ const CANDIDATE_MODELS = [
   'gemini-pro',
 ];
 
-function getGeminiApiKeys() {
-  const candidates = [
-    process.env.GOOGLE_AI_API_KEY,
-    process.env.GEMINI_API_KEY,
-    process.env.CLAVE_API_IA_GOOGLE,
-    process.env.CLAVE_API_GEMINIS,
-    process.env['CLAVE_API_GÉMINIS'],
-  ]
-    .map(v => String(v || '').trim())
-    .filter(Boolean);
 
-  return [...new Set(candidates)];
-}
-
-/**
- * Llama a la API de Gemini con el prompt dado y devuelve el texto bruto.
- * @param {string} prompt
- * @param {number} [temperature=0.25] - 0.25 para JSON estructurado, 0.8 para conversación libre
- */
-async function callGeminiBrain(prompt, temperature = 0.25) {
-  const geminiApiKeys = getGeminiApiKeys();
-  if (!geminiApiKeys.length) {
-    throw new Error('Faltan GOOGLE_AI_API_KEY y GEMINI_API_KEY en variables de entorno');
+  // ── 1. GEMINI: Conversación libre y operaciones ──────────────────────────────
+  let geminiResult = null;
+  let geminiError = null;
+  try {
+    geminiResult = await callGemini({
+      userMessage,
+      userId,
+      storeName,
+      personality,
+      notes,
+      autonomousMode,
+      allProducts,
+      implicitProduct,
+      persistentHistory,
+      quoteSummary,
+      recentHistory,
+      projectContext,
+    });
+  } catch (e) {
+    geminiError = e;
   }
 
-  const body = JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature, maxOutputTokens: 4096 },
-  });
+  if (geminiResult && geminiResult.message) {
+    return {
+      ...geminiResult,
+      source: 'gemini',
+      legacy: {
+        message: geminiResult.message,
+        action: geminiResult.action || null,
+        data: geminiResult.data || null,
+        intent: geminiResult.intentType || 'general',
+        mode: geminiResult.intentType || 'general',
+        confidence: geminiResult.confidence || 0.9,
+      },
+      decision: geminiResult.decision || { mode: geminiResult.intentType || 'general' },
+    };
+  }
 
-  let lastError = null;
-  for (const apiKey of geminiApiKeys) {
-    for (const model of CANDIDATE_MODELS) {
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      try {
-        const text = await new Promise((resolve, reject) => {
-          const u = new URL(geminiUrl);
+  // Si Gemini no responde, reintentar con prompt reducido antes de fallback
+  if (!geminiResult && !geminiError && userMessage && userMessage.length > 0) {
+    try {
+      const retryGemini = await callGemini({ userMessage, userId });
+      if (retryGemini && retryGemini.message) {
+        return {
+          ...retryGemini,
+          source: 'gemini',
+          legacy: {
+            message: retryGemini.message,
+            action: retryGemini.action || null,
+            data: retryGemini.data || null,
+            intent: retryGemini.intentType || 'general',
+            mode: retryGemini.intentType || 'general',
+            confidence: retryGemini.confidence || 0.8,
+          },
+          decision: retryGemini.decision || { mode: retryGemini.intentType || 'general' },
+        };
+      }
+    } catch (e) {}
+  }
           const req = https.request({
             hostname: u.hostname,
             path: u.pathname + u.search,
@@ -65,37 +88,37 @@ async function callGeminiBrain(prompt, temperature = 0.25) {
                 const parsed = JSON.parse(data);
                 if (parsed.error?.message) return reject(new Error(parsed.error.message));
                 const out = parsed?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                resolve(out);
-              } catch (e) { reject(e); }
-            });
-          });
-          req.on('error', reject);
-          req.write(body);
-          req.end();
-        });
 
-        if (text) return text;
-        lastError = new Error(`Respuesta vacía del modelo ${model}`);
-      } catch (e) {
-        lastError = e;
-        const msg = String(e?.message || '').toLowerCase();
-        if (!msg.includes('not found') && !msg.includes('not supported') && !msg.includes('model')) break;
+      // ── 2. PARSER DETERMINISTA: Solo si Gemini no responde ──────────────────────
+      // Si no hay respuesta de Gemini, intentar parser determinista
+      const parserResult = await parseRamiroIntent({
+        userMessage,
+        userId,
+        storeName,
+        allProducts,
+        implicitProduct,
+        projectContext,
+        notes,
+        autonomousMode,
+        persistentHistory,
+        quoteSummary,
+        recentHistory,
+      });
+      if (parserResult && parserResult.message) {
+        return {
+          ...parserResult,
+          source: 'ramiro',
+          legacy: {
+            message: parserResult.message,
+            action: parserResult.action || null,
+            data: parserResult.data || null,
+            intent: parserResult.intentType || 'general',
+            mode: parserResult.intentType || 'general',
+            confidence: parserResult.confidence || 0.7,
+          },
+          decision: parserResult.decision || { mode: parserResult.intentType || 'general' },
+        };
       }
-    }
-  }
-  throw lastError || new Error('No fue posible obtener respuesta de Gemini');
-}
-
-/**
- * Fallback seguro cuando Gemini no retorna JSON válido o la confianza es muy baja.
- */
-function buildFallbackDecision(userMessage, question = null, rawResponse = null) {
-  const cleanRaw = String(rawResponse || '').trim();
-  const hasUsefulRaw = cleanRaw.length >= 12 && !isLowValueConversationText(cleanRaw);
-  let fallbackText;
-  if (hasUsefulRaw) {
-    fallbackText = cleanRaw.slice(0, 2200);
-  } else if (question) {
     fallbackText = question;
   } else {
     const msgLower = String(userMessage || '').toLowerCase();
@@ -465,6 +488,12 @@ function buildHumanFallbackReply(userMessage = '') {
     return 'Aquí estoy para ayudarte de verdad. Puedo buscar productos, cambiar precio, imagen, colores o stock, activar o desactivar, crear productos, borrar con confirmación y ayudarte con cotizaciones. Dime qué necesitas y lo hago.';
   }
 
+  if (/(quiero\s+aprender|me\s+gustaria\s+aprender|me\s+gustar[ií]a\s+aprender|quiero\s+estudiar|quiero\s+mejorar\s+en)/i.test(n)) {
+    const subject = topic.replace(/^(?:.*?)(?:aprender|estudiar|mejorar\s+en)\s+/i, '').trim();
+    const safeSubject = (subject || 'ese tema').slice(0, 80);
+    return `Buenísimo. Si quieres aprender ${safeSubject}, te propongo empezar con un plan en 4 fases: fundamentos, práctica guiada, rutina semanal y evaluación de progreso. Si quieres, te armo un plan concreto de 30 días según tu nivel y tiempo disponible.`;
+  }
+
   if (/habla(?:me)?\s+de|cuentame\s+de|explica(?:me)?\s+/i.test(n)) {
     const subject = topic.replace(/^(habla(?:me)?\s+de|cuentame\s+de|explica(?:me)?\s+)/i, '').trim();
     return subject ? `Puedo hablarte de ${subject}, pero si la IA no devuelve contenido útil prefiero intentarlo de nuevo antes que responderte con relleno.` : '';
@@ -579,36 +608,50 @@ async function thinkRamiro(opts) {
   // Cargar memoria del usuario
   let userMemory;
   try { userMemory = await getUserMemory(userId); } catch { userMemory = {}; }
-  const memorySummary = formatMemoryForPrompt(userMemory) || '';
-
-  // Catálogo resumido
-  const catalogSummary = allProducts.map(p =>
-    `ID=${p.id} | ${p.name} (${p.category}): $${p.price} | activo:${p.active ? 'si' : 'no'} | imagen:${p.image_url ? 'si' : 'no'}`
-  ).join('\n');
-
-  const deterministicDecision = buildDeterministicOperationalDecision(userMessage, allProducts, implicitProduct);
-  const deterministicGuidanceDecision = buildDeterministicGuidanceDecision(userMessage, allProducts, implicitProduct);
-  const deterministicFallbackDecision = deterministicDecision || deterministicGuidanceDecision || null;
-
-  // Atajo conversacional por defecto: cualquier mensaje no operacional va por respuesta natural.
-  if (!isLikelyOperationalMessage(userMessage)) {
-    try {
-      const text = await buildGeneralConversationText({ storeName, userMessage, recentHistory });
+  // ── 3. FALLBACK HUMANO: Solo si todo falla ───────────────────────────────────
+  const fallback = buildHumanFallbackReply(userMessage);
+  return {
+    message: fallback,
+    source: 'ramiro',
+    legacy: {
+      message: fallback,
+      action: null,
+      data: null,
+      intent: 'general',
+      mode: 'general',
+      confidence: 0.5,
+    },
+    decision: { mode: 'general' },
+  };
       if (text && !isLowValueConversationText(text)) {
         const fb = buildFallbackDecision(userMessage, null, text);
         fb.mode = 'general';
         fb.intent = 'general_chat';
+        fb.source = 'gemini';
         return { decision: fb, legacy: translateBrainToLegacy(fb) };
       }
     } catch {
-      // Si falla, intentamos fallback humano seguro y luego continuamos con el brain completo.
+      // Si Gemini falla, intentar con prompt mínimo antes de caer a fallback local.
+      try {
+        const minimalPrompt = `Eres Ramiro, asistente de ${storeName}. Responde brevemente en español: ${String(userMessage || '').slice(0, 300)}`;
+        const retryText = await callGeminiBrain(minimalPrompt, 0.7);
+        if (retryText && !isLowValueConversationText(retryText)) {
+          const fb = buildFallbackDecision(userMessage, null, retryText.trim());
+          fb.mode = 'general';
+          fb.intent = 'general_chat';
+          fb.source = 'gemini';
+          return { decision: fb, legacy: translateBrainToLegacy(fb) };
+        }
+      } catch { /* Si el reintento también falla, usar fallback local */ }
     }
 
+    // Último recurso: fallback local (Ramiro propio, sin Gemini)
     const humanFallback = buildHumanFallbackReply(userMessage);
     if (humanFallback) {
       const fb = buildFallbackDecision(userMessage, null, humanFallback);
       fb.mode = 'general';
       fb.intent = 'general_chat_fallback';
+      fb.source = 'ramiro';
       return { decision: fb, legacy: translateBrainToLegacy(fb) };
     }
   }
@@ -639,10 +682,8 @@ Responde SOLO en JSON válido según el esquema indicado.`;
         const fb = buildFallbackDecision(userMessage, null, generalText);
         fb.mode = 'general';
         fb.intent = 'general_chat';
-        return {
-          decision: fb,
-          legacy: translateBrainToLegacy(fb),
-        };
+        fb.source = 'gemini';
+        return { decision: fb, legacy: translateBrainToLegacy(fb) };
       }
 
       const humanFallback = buildHumanFallbackReply(userMessage);
@@ -650,30 +691,29 @@ Responde SOLO en JSON válido según el esquema indicado.`;
         const fb = buildFallbackDecision(userMessage, null, humanFallback);
         fb.mode = 'general';
         fb.intent = 'general_chat_fallback';
-        return {
-          decision: fb,
-          legacy: translateBrainToLegacy(fb),
-        };
+        fb.source = 'ramiro';
+        return { decision: fb, legacy: translateBrainToLegacy(fb) };
       }
     }
 
     if (deterministicFallbackDecision) {
+      deterministicFallbackDecision.source = 'ramiro';
       return {
         decision: deterministicFallbackDecision,
         legacy: translateBrainToLegacy(deterministicFallbackDecision),
       };
     }
 
-    return {
-      decision: buildFallbackDecision(userMessage),
-      legacy: translateBrainToLegacy(buildFallbackDecision(userMessage)),
-    };
+    const fd = buildFallbackDecision(userMessage);
+    fd.source = 'ramiro';
+    return { decision: fd, legacy: translateBrainToLegacy(fd) };
   }
 
   const parsed = safeJsonParse(rawText);
   if (!parsed.ok || !parsed.data || typeof parsed.data !== 'object') {
     console.warn('[RamiroBrain] JSON inválido de Gemini:', String(rawText).slice(0, 300));
     if (deterministicFallbackDecision && isLikelyOperationalMessage(userMessage)) {
+      deterministicFallbackDecision.source = 'ramiro';
       return {
         decision: deterministicFallbackDecision,
         legacy: translateBrainToLegacy(deterministicFallbackDecision),
@@ -689,6 +729,8 @@ Responde SOLO en JSON válido según el esquema indicado.`;
     }
     const rawCandidate = !isLowValueConversationText(rawText) ? rawText : '';
     const fb = buildFallbackDecision(userMessage, null, generalText || rawCandidate);
+    // Si el texto vino de rawText (respuesta de Gemini en texto libre), marcar como gemini
+    fb.source = (rawCandidate || (generalText && generalText !== buildHumanFallbackReply(userMessage))) ? 'gemini' : 'ramiro';
     return { decision: fb, legacy: translateBrainToLegacy(fb) };
   }
 
@@ -719,6 +761,7 @@ Responde SOLO en JSON válido según el esquema indicado.`;
     && isLikelyOperationalMessage(userMessage)
     && (decision?.needsClarification || decision?.mode === 'clarification')
     && isGenericClarificationText(decision?.question || decision?.response)) {
+    deterministicFallbackDecision.source = 'ramiro';
     return {
       decision: deterministicFallbackDecision,
       legacy: translateBrainToLegacy(deterministicFallbackDecision),
@@ -732,6 +775,8 @@ Responde SOLO en JSON válido según el esquema indicado.`;
     );
   }
 
+  // Respuesta vino de Gemini (JSON estructurado)
+  decision.source = 'gemini';
   const legacy = translateBrainToLegacy(decision);
 
   return { decision, legacy };

@@ -403,6 +403,28 @@
   font-size: 12px;
 }
 
+.r-source-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+  opacity: 0.75;
+}
+.r-source-gemini {
+  background: #e8f0fe;
+  color: #1a56db;
+}
+.r-source-ramiro {
+  background: #f0f0f5;
+  color: #555;
+}
+.r-msg-bot .r-source-badge {
+  display: block;
+}
+
 @keyframes ramiroPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .48; }
@@ -487,6 +509,7 @@ let _ramiroHistory = [];
 let _ramiroConfig = {};
 let _ramiroLoaded = false;
 let _ramiroConversationId = getRamiroStoredConversationId();
+const _ramiroShowSource = <%- (settings && settings.ramiro_show_source) ? 'true' : 'false' %>;
 
 function formatDateShort(v) {
   try {
@@ -540,13 +563,23 @@ async function toggleRamiro() {
   }
 }
 
-function addRamiroMsg(text, role) {
+function addRamiroMsg(text, role, source) {
   const box = document.getElementById('ramiroMessages');
   if (!box) return null;
   const div = document.createElement('div');
   div.className = 'r-msg r-msg-' + role;
-  if (role === 'thinking') div.innerHTML = '<span class="r-thinking-dots">Ramiro está pensando</span>';
-  else div.textContent = text;
+  if (role === 'thinking') {
+    div.innerHTML = '<span class="r-thinking-dots">Ramiro está pensando</span>';
+  } else if (_ramiroShowSource && source && role === 'bot') {
+    const isGemini = source === 'gemini';
+    const badge = `<span class="r-source-badge r-source-${source}">${isGemini ? 'Gemini' : 'Ramiro'}</span>`;
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = text;
+    div.innerHTML = badge;
+    div.appendChild(msgSpan);
+  } else {
+    div.textContent = text;
+  }
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   return div;
@@ -621,7 +654,7 @@ function handleRamiroResponse(data) {
 
   // Mostrar mensaje principal
   if (data.message) {
-    addRamiroMsg(data.message, 'bot');
+    addRamiroMsg(data.message, 'bot', data.responseSource);
     _ramiroHistory.push({ role: 'bot', text: data.message });
   }
 

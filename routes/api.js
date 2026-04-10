@@ -877,6 +877,7 @@ router.put('/settings', requireAdminAPI, upload.single('logo'), async (req, res)
     if (updates.auth_hero_badge_active !== undefined) updates.auth_hero_badge_active = updates.auth_hero_badge_active === '1';
     if (updates.support_section_active !== undefined) updates.support_section_active = updates.support_section_active === '1';
     if (updates.show_ramiro !== undefined) updates.show_ramiro = updates.show_ramiro === '1';
+    if (updates.ramiro_show_source !== undefined) updates.ramiro_show_source = updates.ramiro_show_source === '1';
     if (updates.show_admin_icon !== undefined) updates.show_admin_icon = updates.show_admin_icon === '1';
     if (updates.support_cards) try { updates.support_cards = JSON.parse(updates.support_cards); } catch { delete updates.support_cards; }
     if (updates.footer_cols)   try { updates.footer_cols   = JSON.parse(updates.footer_cols);   } catch { delete updates.footer_cols; }

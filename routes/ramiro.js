@@ -334,6 +334,13 @@ function getQuickConversationalReply(message = '', admin = {}) {
     return 'Aquí estoy para ayudarte de verdad. Puedo: 1) buscar productos, 2) cambiar precio, imagen, colores o stock, 3) activar/desactivar, 4) crear o borrar con confirmación y 5) apoyarte con cotizaciones. Dime qué quieres hacer y lo ejecuto ya.';
   }
 
+  const learningIntent = /(quiero\s+aprender|me\s+gustaria\s+aprender|me\s+gustar[ií]a\s+aprender|quiero\s+estudiar|quiero\s+mejorar\s+en)/i.test(n);
+  if (learningIntent) {
+    const subject = String(msg || '').replace(/^(?:.*?)(?:aprender|estudiar|mejorar\s+en)\s+/i, '').trim();
+    const topic = cleanText(subject || 'ese tema', 80);
+    return `Buenísimo. Si quieres aprender ${topic}, te propongo un plan simple: 1) fundamentos (2 semanas), 2) práctica guiada (4 semanas), 3) rutina fija de técnica + acondicionamiento, y 4) revisión semanal de progreso. Si quieres, te lo bajo a un plan exacto por días y nivel (principiante/intermedio).`;
+  }
+
   const asksOwnName = /(sabes\s+como\s+me\s+llamo|como\s+me\s+llamo|cual\s+es\s+mi\s+nombre|cu[aá]l\s+es\s+mi\s+nombre|sabes\s+mi\s+nombre)/i.test(n);
   if (asksOwnName) {
     const displayName = getAdminDisplayName(admin);
@@ -1223,6 +1230,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
           decision: brainDecision,
           message: clarMessage,
           conversationId,
+          responseSource: brainDecision?.source || 'gemini',
         });
       }
 
@@ -1280,6 +1288,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
               conversationId,
               decision: brainDecision,
               toolResult: agentResult,
+              responseSource: brainDecision?.source || 'gemini',
             });
           }
         } catch (_) {
@@ -2856,6 +2865,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
       data: response.data,
       actionResult,
       intentType: plan?.intentType || response.intentType || null,
+      responseSource: brainDecision?.source || (response.action ? 'ramiro' : 'gemini'),
       plan: plan ? {
         goal: plan.goal || '',
         needsResearch: plan.needsResearch,

@@ -118,6 +118,10 @@
         <span>Mostrar asistente Ramiro en el admin</span>
         <label class="tog"><input type="checkbox" id="s_ramiro_on" <%=settings.show_ramiro!==false?'checked':''%>><div class="tog-t"><div class="tog-th"></div></div></label>
       </div>
+      <div class="tog-r">
+        <span>Mostrar origen de respuesta en Ramiro <span style="font-size:11px;color:#86868b">(badge Gemini / Ramiro)</span></span>
+        <label class="tog"><input type="checkbox" id="s_ramiro_source" <%=settings.ramiro_show_source?'checked':''%>><div class="tog-t"><div class="tog-th"></div></div></label>
+      </div>
     </div>
     <!-- SECCIÓN SOPORTE -->
     <div class="adm-fc" style="margin-bottom:14px">
@@ -286,6 +290,7 @@ async function saveAllSettings(){
   fd.append('auth_desc',         document.getElementById('s_auth_desc').value);
   fd.append('show_admin_icon', document.getElementById('s_admin_icon')?document.getElementById('s_admin_icon').checked?'1':'0':'1');
   fd.append('show_ramiro', document.getElementById('s_ramiro_on')?document.getElementById('s_ramiro_on').checked?'1':'0':'1');
+  fd.append('ramiro_show_source', document.getElementById('s_ramiro_source')?document.getElementById('s_ramiro_source').checked?'1':'0':'0');
   fd.append('support_section_active', document.getElementById('s_sup_on').checked?'1':'0');
   fd.append('support_title',     document.getElementById('s_sup_title').value);
   fd.append('support_subtitle',  document.getElementById('s_sup_sub').value);
