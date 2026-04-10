@@ -1464,6 +1464,19 @@ function buildRiskSummary(action, data) {
   if (action === 'PRODUCT_DELETE') {
     return 'Eliminar un producto de forma permanente.';
   }
+  if (action === 'PRODUCT_CREATE') {
+    const p = data?.product || {};
+    const name = p.name || 'Nuevo producto';
+    const price = p.price ? `$${p.price}` : 'sin precio';
+    const cat = p.category || 'sin categoría';
+    const missing = [];
+    if (!p.image_url) missing.push('imagen');
+    if (!p.color_variants?.length) missing.push('colores');
+    if (!p.variants?.length) missing.push('variantes');
+    if (!p.description) missing.push('descripción');
+    const missingNote = missing.length ? `\nFalta: ${missing.join(', ')} — podés dármelos ahora o confirmar así.` : '';
+    return `Crear "${name}" en categoría ${cat} a ${price}.${missingNote}`;
+  }
   if (action === 'BULK_ACTION') {
     const target = cleanText(data?.filter || 'sin filtro', 120);
     const kind = cleanText(data?.action || 'acción masiva', 80);
@@ -1474,6 +1487,7 @@ function buildRiskSummary(action, data) {
 
 function isPotentiallyRiskyAction(action, data) {
   if (action === 'PRODUCT_DELETE' || action === 'BULK_ACTION' || action === 'SYNC_FROM_URL') return true;
+  if (action === 'PRODUCT_CREATE') return true; // siempre pedir confirmación antes de crear
   if (action === 'PRODUCT_UPDATE' && data?.updates) {
     const keys = Object.keys(data.updates || {});
     // Cambios mixtos grandes: pedimos confirmación cuando toca varios campos de una sola vez.
@@ -2069,8 +2083,9 @@ REGLAS DE COMPORTAMIENTO:
    {"message":"✅ actualizado","action":"PRODUCT_UPDATE","data":{"productId":"ID","updates":{"price":999,"color_variants":["Rojo"]}}}
 
 2. PRODUCT_CREATE: Crear producto NUEVO
-  {"message":"✅ creado: AirPods Pro $299","action":"PRODUCT_CREATE","data":{"product":{"name":"AirPods Pro","category":"airpods","price":299}}}
+  {"message":"Listo, creo [nombre] en [categoría] a $[precio].","action":"PRODUCT_CREATE","data":{"product":{"name":"AirPods Pro","category":"airpods","price":299}}}
   ⚠️ IMPORTANTE: category DEBE SER uno de estos: mac, iphone, ipad, airpods (NO una lista)
+  ⚠️ El message debe ser una oración natural tuya, NO copies este ejemplo.
 
 3. PRODUCT_DELETE: Borrar producto
    {"message":"✅ borrado","action":"PRODUCT_DELETE","data":{"productId":"ID"}}
@@ -2861,8 +2876,9 @@ ${implicitTargetProduct ? `${implicitTargetProduct.id} | ${implicitTargetProduct
       const plannedSteps = Array.isArray(plan?.steps) && plan.steps.length
         ? `\nPlan:\n- ${plan.steps.join('\n- ')}`
         : '';
+      const confirmWord = response.action === 'PRODUCT_CREATE' ? 'Confirmá para crear o dame más datos.' : 'Confirmá para ejecutar.';
       return res.json({
-        message: `Esta acción es sensible y requiere confirmación.\n${summary}${plannedSteps}\n\nResponde "sí, confirma" para ejecutarla.`,
+        message: `${summary}${plannedSteps}\n\n${confirmWord}`,
         action: null,
         data: null,
         intentType: plan?.intentType || response.intentType || null,
