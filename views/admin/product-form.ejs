@@ -646,7 +646,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 async function saveProduct(){
   const name=document.getElementById('fName').value.trim();
   const price=document.getElementById('fPrice').value;
-  if(!name||!price){flash('Nombre y precio son requeridos','error');return;}
+  if(!name||price===''||price===null||price===undefined){flash('Nombre y precio son requeridos','error');return;}
 
   const specs={};
   document.querySelectorAll('.spec-r').forEach(r=>{
