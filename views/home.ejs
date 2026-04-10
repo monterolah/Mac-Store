@@ -93,23 +93,35 @@ const heroProduct = featured && featured[0];
 
   /* Ajuste específico para banners del hero en móvil */
   @media (max-width: 768px) {
+    .ms-hero-wrap {
+      height: clamp(460px, 78svh, 760px) !important;
+      min-height: 460px !important;
+    }
+    .ms-slide.hero-banner-slide,
+    .ms-slide.hero-banner-slide.active {
+      min-height: 100% !important;
+      height: 100% !important;
+    }
     .ms-slide.hero-banner-slide {
       background: #000 !important;
     }
     .ms-slide.hero-banner-slide .ms-hero-bg {
-      object-fit: contain !important;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
       object-position: center center !important;
-      transform: none !important;
+      transform: scale(1.01) !important;
       background: #000;
     }
     .ms-slide.hero-banner-slide.active .ms-hero-bg {
-      transform: none !important;
+      transform: scale(1) !important;
     }
     .ms-slide.hero-banner-slide .ms-hero-overlay {
       background: linear-gradient(to bottom, rgba(0, 0, 0, 0.18) 0, rgba(0, 0, 0, 0.52) 100%);
     }
     .ms-slide.hero-banner-slide .ms-hero-content {
-      padding: 0 16px;
+      max-width: 100%;
+      padding: 0 16px 20px;
     }
   }
 </style>
