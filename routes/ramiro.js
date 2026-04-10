@@ -351,8 +351,10 @@ function shouldAutoExecute(decision, autonomousMode = true) {
   if (decision.needsClarification) return false;
   if (decision.requiresConfirmation) return false;
 
-  const safeActions = ['answer', 'guide', 'search', 'extract', 'update', 'create', 'hide'];
-  return safeActions.includes(String(decision?.action?.type || 'none'));
+  const actionType = String(decision?.action?.type || 'none').toLowerCase();
+  if (!actionType || actionType === 'none') return false;
+  if (['ask', 'confirm'].includes(actionType)) return false;
+  return true;
 }
 
 function formatAgentToolMessage(agentResult, decision) {
@@ -1499,6 +1501,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
     }
 
     if (response.action === 'PRODUCT_UPDATE' && response.data?.updates) {
+      const isMultiFieldRequest = /\b(y|e|ademas|adem[aá]s|tambien|tambi[eé]n|todo|completo)\b|,/.test(userMsgNorm);
       const intentFields =
         /(?:habilita|habilitar|activa|activar)\s+[0-9]{2,4}\s?gb\s+para\s+/i.test(userMsg) ? ['variants', 'color_variants'] :
         /(colores?|color)/i.test(userMsgNorm) ? ['color_variants'] :
@@ -1508,7 +1511,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
         /(activa|activar|desactiva|desactivar|inactivo|activo)/i.test(userMsgNorm) ? ['active'] :
         null;
 
-      if (intentFields) {
+      if (intentFields && !isMultiFieldRequest) {
         const filtered = {};
         for (const k of intentFields) {
           if (Object.prototype.hasOwnProperty.call(response.data.updates, k)) filtered[k] = response.data.updates[k];
