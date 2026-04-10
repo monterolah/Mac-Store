@@ -8,6 +8,15 @@ const fmt     = p => new Intl.NumberFormat('en-US',{style:'currency',currency:'U
 
 function docToObj(doc) { return { id: doc.id, ...doc.data() }; }
 
+function sortBySortOrder(items) {
+  return [...items].sort((a, b) => {
+    const av = Number.isFinite(Number(a?.sort_order)) ? Number(a.sort_order) : Number.MAX_SAFE_INTEGER;
+    const bv = Number.isFinite(Number(b?.sort_order)) ? Number(b.sort_order) : Number.MAX_SAFE_INTEGER;
+    if (av !== bv) return av - bv;
+    return String(a?.name || '').localeCompare(String(b?.name || ''));
+  });
+}
+
 async function getSiteData() {
   try {
     const doc = await getFirestore().collection('settings').doc('main').get();
@@ -62,11 +71,11 @@ router.get('/', requireAdmin, async (req, res) => {
   const [settings, categories, pSnap, bSnap] = await Promise.all([
     getSiteData(),
     getCategories(),
-    db.collection('products').orderBy('sort_order','asc').get(),
+    db.collection('products').get(),
     db.collection('banners').where('active','==',true).get()
   ]);
 
-  const products = pSnap.docs.map(docToObj);
+  const products = sortBySortOrder(pSnap.docs.map(docToObj));
   const stats = {
     products: pSnap.size,
     active:   products.filter(p => p.active !== false).length,
@@ -83,9 +92,9 @@ router.get('/productos', requireAdmin, async (req, res) => {
   const [settings, categories, snap] = await Promise.all([
     getSiteData(),
     getCategories(),
-    db.collection('products').orderBy('sort_order','asc').get()
+    db.collection('products').get()
   ]);
-  const products = snap.docs.map(docToObj);
+  const products = sortBySortOrder(snap.docs.map(docToObj));
   res.render('admin/products', { title:'Productos — Admin', settings, categories, announcements:[], products, token:req.session.adminToken, formatPrice:fmt, admin });
 });
 
