@@ -1250,7 +1250,10 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
       const msg = String(effectiveMessage || '').trim();
       const msgNorm = normalizeForMatch(msg);
       const adminDisplayName = getAdminDisplayName(req.admin);
-      const targetFromRef = (ref) => resolveTargetProduct(allProducts, ref, implicitTargetProduct);
+      const targetFromRef = (ref, opts = {}) => {
+        const allowImplicit = opts.allowImplicit !== false;
+        return resolveTargetProduct(allProducts, ref, allowImplicit ? implicitTargetProduct : null);
+      };
 
       const pendingDraft = ramiroPendingProductDraft.get(adminKey);
       if (pendingDraft && pendingDraft.expiresAt < Date.now()) {
@@ -1566,7 +1569,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
           continue;
         }
 
-        const targetProd = targetFromRef(targetRef);
+        const targetProd = targetFromRef(targetRef, { allowImplicit: false });
         if (targetProd && Number.isFinite(price) && price > 0) {
           response = {
             message: `✅ actualizado precio de ${targetProd.name} a $${price}`,
@@ -1586,7 +1589,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
           const capacity = String(capCmd[1]).replace(/\s+/g, '').toUpperCase();
           const targetRaw = String(capCmd[2] || '').trim();
 
-          let targetProd = targetFromRef(targetRaw);
+          let targetProd = targetFromRef(targetRaw, { allowImplicit: false });
           let colorName = '';
 
           if (targetProd) {
@@ -1599,7 +1602,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
             const colorTail = genericColors.find(c => targetNorm.endsWith(` ${c}`) || targetNorm === c);
             if (colorTail) {
               const productPart = targetRaw.slice(0, Math.max(0, targetRaw.length - colorTail.length)).trim();
-              targetProd = targetFromRef(productPart);
+              targetProd = targetFromRef(productPart, { allowImplicit: false });
               colorName = colorTail;
             }
           }
