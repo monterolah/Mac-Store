@@ -90,9 +90,26 @@ async function callGeminiBrain(prompt) {
 function buildFallbackDecision(userMessage, question = null, rawResponse = null) {
   const cleanRaw = String(rawResponse || '').trim();
   const hasUsefulRaw = cleanRaw.length >= 12;
-  const fallbackText = hasUsefulRaw
-    ? cleanRaw.slice(0, 2200)
-    : (question || 'No pude procesar bien ese mensaje. ¿Qué quieres hacer exactamente? Ejemplos: "editar precio", "cambiar imagen", "crear producto", "activar producto".');
+  let fallbackText;
+  if (hasUsefulRaw) {
+    fallbackText = cleanRaw.slice(0, 2200);
+  } else if (question) {
+    fallbackText = question;
+  } else {
+    const msgLower = String(userMessage || '').toLowerCase();
+    if (msgLower.includes('precio') || msgLower.match(/\$?\d+/)) {
+      fallbackText = 'Disculpa, no pude cerrar bien el cambio de precio. Dime el producto y el monto, por ejemplo: cambiar precio de iPhone 15 a $899.';
+    } else if (msgLower.includes('imagen') || msgLower.includes('foto') || msgLower.match(/https?:\/\//)) {
+      fallbackText = 'Disculpa, el cambio de imagen quedó incompleto. Dime primero el producto y luego me mandas el URL.';
+    } else if (msgLower.includes('crear') || msgLower.includes('nuevo')) {
+      fallbackText = 'Para crear el producto necesito al menos nombre, categoría y precio. Si quieres, te lo voy pidiendo paso a paso.';
+    } else if (isLikelyGeneralConversation(userMessage)) {
+      fallbackText = buildOfflineGeneralConversationText(userMessage)
+        || 'Te entendí como conversación normal, pero esta respuesta salió mal internamente. Vuelve a decírmelo y te respondo directo.';
+    } else {
+      fallbackText = 'Entendí que quieres hacer un cambio, pero me faltó contexto para ejecutarlo. Dime qué producto quieres tocar y qué campo quieres cambiar.';
+    }
+  }
 
   return {
     mode: hasUsefulRaw ? 'general' : 'clarification',
@@ -116,7 +133,8 @@ function isGenericClarificationText(text = '') {
   if (!t) return true;
   return t.includes('en que te puedo ayudar')
     || t.includes('que quieres hacer exactamente')
-    || t.includes('no pude procesar bien ese mensaje');
+    || t.includes('no pude procesar bien ese mensaje')
+    || t.includes('no entendi bien tu solicitud');
 }
 
 function normalizeForIntent(text = '') {
@@ -129,9 +147,25 @@ function normalizeForIntent(text = '') {
     .trim();
 }
 
+function isLikelyGeneralConversation(text = '') {
+  const n = normalizeForIntent(text);
+  if (!n) return false;
+
+  const signals = [
+    'hola', 'hey', 'buenas', 'que tal', 'como estas', 'como te va', 'que opinas',
+    'a que equipo le vas', 'mundial', 'futbol', 'paises', 'selecciones', 'quien gana',
+    'guerra fria', 'historia', 'inteligencia artificial', 'ia', 'explicame', 'cuentame',
+    'que sabes', 'por que', 'porque', 'como funciona', 'que significa', 'cual es', 'cuales son'
+  ];
+
+  return signals.some(signal => n.includes(signal))
+    || /^(que|como|cual|cuales|quien|quienes|donde|cuando|por que|porque|me puedes|puedes|opinas)/.test(n);
+}
+
 function isLikelyOperationalMessage(text = '') {
   const n = normalizeForIntent(text);
   if (!n) return false;
+  if (isLikelyGeneralConversation(text)) return false;
   return [
     'precio', 'producto', 'catalogo', 'categoria', 'imagen', 'color', 'stock', 'variante',
     'crear', 'agregar', 'anadir', 'editar', 'actualizar', 'eliminar', 'borrar',
@@ -143,12 +177,24 @@ function buildOfflineGeneralConversationText(userMessage = '') {
   const n = normalizeForIntent(userMessage);
   if (!n) return '';
 
-  if (n.includes('guerra fria') || n.includes('guerra fria')) {
+  if (n.includes('guerra fria')) {
     return 'Claro. La Guerra Fria fue una rivalidad geopolitica (1947-1991) entre Estados Unidos y la URSS. No fue una guerra directa entre ambas potencias, sino un conflicto de influencia global con carrera armamentista nuclear, espionaje, propaganda y guerras indirectas (Corea, Vietnam, Afganistan). En Europa simbolizo la division entre bloques (OTAN y Pacto de Varsovia), con episodios criticos como Berlin y la Crisis de los Misiles en Cuba (1962). Termino con la crisis del bloque sovietico y la disolucion de la URSS en 1991.';
   }
 
   if (n.includes('que es la ia') || n.includes('inteligencia artificial')) {
     return 'La inteligencia artificial es el campo que desarrolla sistemas capaces de realizar tareas cognitivas, como comprender lenguaje, reconocer patrones, predecir resultados y apoyar decisiones, usando modelos entrenados con datos.';
+  }
+
+  if (n.includes('a que equipo le vas') || (n.includes('equipo') && n.includes('mundial'))) {
+    return 'No tengo camiseta propia, pero si me preguntas por nivel de juego y consistencia, Argentina suele aparecer fuerte. Si quieres, también te puedo responder más neutral y comparar favoritos al Mundial.';
+  }
+
+  if ((n.includes('paises') || n.includes('selecciones')) && n.includes('mundial')) {
+    return 'Depende de cuál Mundial hablas, porque los clasificados cambian por edición. Si me dices si te refieres a 2022, 2026 u otro, te digo los países exactos; si quieres, también te explico cómo se reparten los cupos por confederación.';
+  }
+
+  if (n.includes('futbol') || n.includes('mundial')) {
+    return 'Sí puedo conversar de fútbol. Si quieres, te hablo de favoritos, clasificados, formato del Mundial o historia del torneo. Si me dices el año exacto, te respondo mejor.';
   }
 
   return '';
@@ -273,7 +319,7 @@ Responde SOLO en JSON válido según el esquema indicado.`;
     let generalText = String(rawText || '').trim();
     if (!generalText || isGenericClarificationText(generalText)) {
       generalText = await buildGeneralConversationText({ storeName, userMessage });
-      if (!generalText && !isLikelyOperationalMessage(userMessage)) {
+      if ((!generalText || isGenericClarificationText(generalText)) && !isLikelyOperationalMessage(userMessage)) {
         generalText = buildOfflineGeneralConversationText(userMessage);
       }
     }
@@ -286,8 +332,13 @@ Responde SOLO en JSON válido según el esquema indicado.`;
   // Si el modelo devolvió una aclaración genérica en temas abiertos, pedir una respuesta conversacional real.
   const actionType = String(decision?.action?.type || '').toLowerCase();
   const isNonOperationalAsk = !actionType || actionType === 'ask' || actionType === 'none';
-  if (decision?.needsClarification && isNonOperationalAsk && isGenericClarificationText(decision?.question || decision?.response)) {
-    const generalText = await buildGeneralConversationText({ storeName, userMessage });
+  if ((decision?.needsClarification || decision?.mode === 'clarification')
+    && isNonOperationalAsk
+    && (isGenericClarificationText(decision?.question || decision?.response) || isLikelyGeneralConversation(userMessage))) {
+    let generalText = await buildGeneralConversationText({ storeName, userMessage });
+    if (!generalText || isGenericClarificationText(generalText)) {
+      generalText = buildOfflineGeneralConversationText(userMessage);
+    }
     if (generalText) {
       decision.mode = 'general';
       decision.intent = decision.intent || 'general_chat';
