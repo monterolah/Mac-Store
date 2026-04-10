@@ -1730,7 +1730,7 @@ router.post('/ramiro/chat', requireAdminAPI, async (req, res) => {
 
     // Construir catálogo detallado para el prompt
     const catalogoDetallado = allProducts.map(p => 
-      `[${p.id}] ${p.name} (${p.category}): $${p.price}`
+      `ID=${p.id} | ${p.name} (${p.category}): $${p.price}`
     ).join('\n');
 
     // Construir prompt de sistema - CONCISO y DIRECTO
@@ -1795,7 +1795,11 @@ ${recentHistory ? recentHistory + '\n' : ''}Admin: ${message}`;
 
     if (response.action === 'PRODUCT_UPDATE' && response.data?.productId) {
       try {
-        const targetProd = allProducts.find(p => p.id === response.data.productId);
+        let targetProd = allProducts.find(p => p.id === response.data.productId);
+        // Fallback: buscar por slug si Gemini devuelve slug en lugar de ID
+        if (!targetProd) {
+          targetProd = allProducts.find(p => p.slug === response.data.productId);
+        }
         if (!targetProd) throw new Error(`Producto no encontrado: ${response.data.productId}`);
 
         const updates = response.data.updates || {};
@@ -1817,19 +1821,25 @@ ${recentHistory ? recentHistory + '\n' : ''}Admin: ${message}`;
 
         if (Object.keys(cleanUpdates).length === 0) throw new Error('No hay cambios válidos para aplicar');
 
-        await db.collection('products').doc(response.data.productId).update({ ...cleanUpdates, updatedAt: new Date() });
+        // Usar el ID real del producto encontrado (en caso que Gemini haya pasado slug)
+        const realProductId = targetProd.id;
+        await db.collection('products').doc(realProductId).update({ ...cleanUpdates, updatedAt: new Date() });
         const changes = Object.keys(cleanUpdates).map(k => `${k}: ${JSON.stringify(cleanUpdates[k]).slice(0, 30)}`).join(' | ');
-        actionResult = { ok: true, type: 'update', productId: response.data.productId, changes };
+        actionResult = { ok: true, type: 'update', productId: realProductId, productName: targetProd.name, changes };
       } catch(e) { actionResult = { ok: false, error: e.message }; }
     }
 
     else if (response.action === 'PRODUCT_DELETE' && response.data?.productId) {
       try {
-        const targetProd = allProducts.find(p => p.id === response.data.productId);
+        let targetProd = allProducts.find(p => p.id === response.data.productId);
+        // Fallback: buscar por slug
+        if (!targetProd) {
+          targetProd = allProducts.find(p => p.slug === response.data.productId);
+        }
         if (!targetProd) throw new Error(`Producto no encontrado: ${response.data.productId}`);
         
-        await db.collection('products').doc(response.data.productId).delete();
-        actionResult = { ok: true, type: 'delete', productId: response.data.productId, name: targetProd.name };
+        await db.collection('products').doc(targetProd.id).delete();
+        actionResult = { ok: true, type: 'delete', productId: targetProd.id, name: targetProd.name };
       } catch(e) { actionResult = { ok: false, error: e.message }; }
     }
 
