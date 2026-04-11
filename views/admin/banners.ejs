@@ -8,7 +8,14 @@
   <% banners.forEach(b=>{ %>
   <div class="b-card" id="bcard-<%=b.id%>">
     <div class="b-card-img" style="background:<%=b.bg_color||'#1d1d1f'%>">
-      <% if(b.image_url){ %><img src="<%=b.image_url%>" alt="<%=b.title%>" onerror="this.style.display='none'"><% } %>
+      <% if(b.image_url){ 
+           const bIsVideo = b.image_url.match(/\.(mp4|webm|ogg)$/i);
+           if(bIsVideo){ %>
+             <video src="<%=b.image_url%>" style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;opacity:0.6;" autoplay loop muted playsinline></video>
+      <%   } else { %>
+             <img src="<%=b.image_url%>" alt="<%=b.title%>" onerror="this.style.display='none'">
+      <%   }
+         } %>
       <span style="position:relative;z-index:1;color:<%=b.text_color||'#fff'%>;font-weight:700;font-size:18px;letter-spacing:-.03em"><%=b.title||'Sin título'%></span>
     </div>
     <div class="b-card-body">
@@ -44,17 +51,18 @@
       <div class="adm-f"><label>URL del botón</label><input type="text" id="bUrl" placeholder="/productos/iphone-16-pro"></div>
     </div>
     <div class="adm-f">
-      <label>Subir imagen de fondo</label>
-      <input type="file" id="bFile" accept="image/*" onchange="previewBanner(this)">
-      <div class="adm-f-hint">Recomendado: 1600×900px o mayor. JPG, PNG, WebP.</div>
+      <label>Subir imagen de fondo o video</label>
+      <input type="file" id="bFile" accept="image/*,video/mp4,video/webm" onchange="previewBanner(this)">
+      <div class="adm-f-hint">Recomendado: 1600×900px. JPG, PNG, WebP o MP4 (max 25MB).</div>
     </div>
     <div class="adm-f">
-      <label>O URL de imagen (pega una URL directa)</label>
-      <input type="text" id="bImg" placeholder="https://images.unsplash.com/…">
+      <label>O URL de archivo (pega una URL directa)</label>
+      <input type="text" id="bImg" placeholder="https://...">
       <div class="adm-f-hint">Si subes archivo Y pegas URL, se usa el archivo subido.</div>
     </div>
     <div id="bPreviewWrap" style="display:none;margin-bottom:14px">
       <img id="bPreview" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px" alt="Vista previa">
+      <video id="bPreviewVid" style="width:100%;max-height:200px;object-fit:cover;border-radius:10px;display:none;" autoplay loop muted playsinline></video>
     </div>
     <div class="adm-f-row">
       <div class="adm-f"><label>Color de fondo</label><input type="color" id="bBg" value="#1d1d1f" style="height:40px;padding:4px 8px;width:100%"></div>
@@ -80,12 +88,17 @@ const TOKEN = '<%=token%>';
 
 function previewBanner(input){
   if(!input.files||!input.files[0]) return;
+  const file = input.files[0];
+  const isVideo = file.type.startsWith('video');
+  document.getElementById('bPreview').style.display = isVideo ? 'none' : 'block';
+  document.getElementById('bPreviewVid').style.display = isVideo ? 'block' : 'none';
   const reader=new FileReader();
   reader.onload=e=>{
-    document.getElementById('bPreview').src=e.target.result;
+    if(isVideo) document.getElementById('bPreviewVid').src=e.target.result;
+    else document.getElementById('bPreview').src=e.target.result;
     document.getElementById('bPreviewWrap').style.display='block';
   };
-  reader.readAsDataURL(input.files[0]);
+  reader.readAsDataURL(file);
 }
 
 function loadBanner(b){
@@ -102,8 +115,14 @@ function loadBanner(b){
   document.getElementById('bActive').checked = !!b.active;
   document.getElementById('formTitle').textContent = 'Editar banner: ' + b.title;
   if(b.image_url){
-    document.getElementById('bPreview').src = b.image_url;
+    const isVideo = String(b.image_url).match(/\.([^.]+)$/)?.[1]?.match(/(mp4|webm|ogg)$/i);
+    document.getElementById('bPreview').style.display = isVideo ? 'none' : 'block';
+    document.getElementById('bPreviewVid').style.display = isVideo ? 'block' : 'none';
+    if(isVideo) document.getElementById('bPreviewVid').src = b.image_url;
+    else document.getElementById('bPreview').src = b.image_url;
     document.getElementById('bPreviewWrap').style.display = 'block';
+  } else {
+    document.getElementById('bPreviewWrap').style.display = 'none';
   }
   document.getElementById('bannerForm').scrollIntoView({behavior:'smooth',block:'start'});
   document.getElementById('bTitle').focus();

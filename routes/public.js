@@ -1,5 +1,6 @@
 const express = require('express');
 const { getFirestore } = require('../db/firebase');
+const { getCache, setCache } = require('../utils/cache');
 const router  = express.Router();
 const fmt     = p => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(p||0);
 
@@ -29,26 +30,35 @@ router.get('/salir-tienda', (req, res) => {
 // ── Helpers de query optimizados ──────────────────────────────────────────────
 
 async function getSiteData() {
+  if (getCache('settings')) return getCache('settings');
   const doc = await getFirestore().collection('settings').doc('main').get();
-  return doc.exists ? doc.data() : {};
+  const data = doc.exists ? doc.data() : {};
+  setCache('settings', data);
+  return data;
 }
 
 async function getCategories() {
+  if (getCache('categories')) return getCache('categories');
   const snap = await getFirestore()
     .collection('categories')
     .where('active', '==', true)
     .orderBy('sort_order', 'asc')
     .get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  setCache('categories', data);
+  return data;
 }
 
 async function getAnnouncements() {
+  if (getCache('announcements')) return getCache('announcements');
   const snap = await getFirestore()
     .collection('announcements')
     .where('active', '==', true)
     .orderBy('sort_order', 'asc')
     .get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  setCache('announcements', data);
+  return data;
 }
 
 function docToObj(doc) {
@@ -60,17 +70,27 @@ router.get('/', async (req, res) => {
   try {
     const db = getFirestore();
 
-    // Todo en paralelo — 4 queries simultáneas en vez de 4 en serie
-    const [settings, categories, bannersSnap, productsSnap, announcements] = await Promise.all([
+    // Si banners y productos están en caché explícita para el home:
+    let banners = getCache('homeBanners');
+    let allProducts = getCache('homeProducts');
+    const promises = [
       getSiteData(),
       getCategories(),
-      db.collection('banners').where('active', '==', true).orderBy('sort_order', 'asc').get(),
-      db.collection('products').where('active', '==', true).orderBy('sort_order', 'asc').get(),
+      !banners ? db.collection('banners').where('active', '==', true).orderBy('sort_order', 'asc').get() : Promise.resolve(null),
+      !allProducts ? db.collection('products').where('active', '==', true).orderBy('sort_order', 'asc').get() : Promise.resolve(null),
       getAnnouncements()
-    ]);
+    ];
 
-    const banners     = bannersSnap.docs.map(docToObj);
-    const allProducts = productsSnap.docs.map(docToObj);
+    const [settings, categories, bannersSnap, productsSnap, announcements] = await Promise.all(promises);
+
+    if (!banners) {
+      banners = bannersSnap.docs.map(docToObj);
+      setCache('homeBanners', banners);
+    }
+    if (!allProducts) {
+      allProducts = productsSnap.docs.map(docToObj);
+      setCache('homeProducts', allProducts);
+    }
     const featured    = allProducts.filter(p => p.featured);
 
     // Solo mostrar categorías que tienen productos (o forzadas)

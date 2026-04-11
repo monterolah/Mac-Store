@@ -21,7 +21,7 @@ async function uploadToStorage(fileBuffer, originalname, folder = 'uploads') {
 
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      { folder: `macstore/${folder}`, resource_type: 'image', unique_filename: true },
+      { folder: `macstore/${folder}`, resource_type: 'auto', unique_filename: true },
       (error, result) => {
         if (error) return reject(error);
         resolve(result.secure_url);

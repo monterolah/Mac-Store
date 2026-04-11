@@ -873,3 +873,68 @@ async function deleteMemory(index) {
 </script>
 <% } %>
 <!-- ═══════════ FIN RAMIRO ═══════════ -->
+
+<!-- ═══════════ AUTOGUARDADO DE FORMULARIOS ═══════════ -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const path = window.location.pathname;
+  if(!path.startsWith('/admin')) return;
+
+  const forms = document.querySelectorAll('form');
+  forms.forEach(form => {
+    const formId = form.id || form.name;
+    if(!formId) return;
+    const draftKey = `draft_${path}_${formId}`;
+    
+    const stored = localStorage.getItem(draftKey);
+    if(stored) {
+      try {
+        const data = JSON.parse(stored);
+        let hasData = false;
+        Object.keys(data).forEach(id => {
+          const el = document.getElementById(id);
+          if(!el || el.type === 'file' || el.type === 'hidden' || el.type === 'password') return;
+          
+          if(el.type === 'checkbox') el.checked = !!data[id];
+          else el.value = data[id];
+          hasData = true;
+          
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        
+        if (hasData) {
+          const btnClear = document.createElement('div');
+          btnClear.innerHTML = `<span style="font-size:12px;color:#cf2020;cursor:pointer;opacity:0.8;display:inline-block;margin-top:10px;">⟲ Restaurar de la nube (borrar progreso local)</span>`;
+          btnClear.onclick = () => { localStorage.removeItem(draftKey); window.location.reload(); };
+          form.appendChild(btnClear);
+        }
+      } catch(e) {}
+    }
+    
+    const saveDraft = () => {
+      const data = {};
+      const inputs = form.querySelectorAll('input[id], textarea[id], select[id]');
+      inputs.forEach(el => {
+         if(el.type === 'file' || el.type === 'hidden' || el.type === 'password') return;
+         data[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+      });
+      localStorage.setItem(draftKey, JSON.stringify(data));
+    };
+
+    form.addEventListener('input', saveDraft);
+    form.addEventListener('change', saveDraft);
+
+    form.addEventListener('submit', () => {
+      localStorage.removeItem(draftKey);
+    });
+    
+    const saveBtns = form.querySelectorAll('button[type="submit"], button.adm-btn-p');
+    saveBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        setTimeout(() => localStorage.removeItem(draftKey), 1500);
+      });
+    });
+  });
+});
+</script>

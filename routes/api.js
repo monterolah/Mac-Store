@@ -16,14 +16,29 @@ const { learnPattern } = require('../ramiro/services/ramiroMemory');
 const PDFDocument = require('pdfkit');
 
 const router = express.Router();
+const { clearCache } = require('../utils/cache');
+
+// Invalidar caché automáticamente tras cualquier cambio de administrador
+router.use((req, res, next) => {
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+    res.on('finish', () => {
+      if (res.statusCode >= 200 && res.statusCode < 400 && !req.originalUrl.includes('/auth/login') && !req.originalUrl.includes('/upload')) {
+        clearCache();
+      }
+    });
+  }
+  next();
+});
+
 
 // ── MULTER CONFIG — memoria para subir a Firebase Storage ─────────────────
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 }, // 25 MB
   fileFilter: (req, file, cb) => {
     if (!file || !file.originalname) return cb(new Error('Archivo inválido'));
-    return file.mimetype.startsWith('image/') ? cb(null, true) : cb(new Error('Solo imágenes'));
+    const isValid = file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/');
+    return isValid ? cb(null, true) : cb(new Error('Solo imágenes y videos permitidos'));
   }
 });
 

@@ -10,9 +10,14 @@ const heroProduct = featured && featured[0];
   <% if(heroBanners.length){ %>
     <% heroBanners.forEach((b,i)=>{ %>
     <div class="ms-slide hero-banner-slide <%=i===0?'active':''%>" style="background:<%=b.bg_color||'#000'%>">
-      <% if(b.image_url){ %>
-      <img class="ms-hero-bg" src="<%=b.image_url%>" alt="<%=b.title%>" loading="<%=i===0?'eager':'lazy'%>">
-      <% } %>
+      <% if(b.image_url){ 
+           const isVideo = b.image_url.match(/\.(mp4|webm|ogg)$/i);
+           if(isVideo) { %>
+        <video class="ms-hero-bg" src="<%=b.image_url%>" autoplay loop muted playsinline style="object-fit:cover; pointer-events: none;"></video>
+      <%   } else { %>
+        <img class="ms-hero-bg" src="<%=b.image_url%>" alt="<%=b.title%>" loading="<%=i===0?'eager':'lazy'%>">
+      <%   }
+         } %>
       <div class="ms-hero-overlay"></div>
       <div class="ms-hero-content">
         <% if(b.subtitle){ %><p class="ms-eyebrow" style="color:<%=b.text_color||'#fff'%>;opacity:.75"><%=b.subtitle%></p><% } %>
