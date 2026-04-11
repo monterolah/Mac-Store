@@ -11,7 +11,7 @@ function slugify(text) {
 }
 
 const ALLOWED_CATEGORIES = new Set(['mac', 'iphone', 'ipad', 'airpods']);
-const ALLOWED_UPDATE_FIELDS = ['price', 'active', 'description', 'variants', 'color_variants', 'stock', 'specs', 'badge', 'image_url'];
+const ALLOWED_UPDATE_FIELDS = ['price', 'original_price', 'active', 'description', 'variants', 'color_variants', 'stock', 'specs', 'badge', 'image_url'];
 
 /**
  * Busca productos aplicando filtros simples en memoria (después de un get() sin orderBy).
