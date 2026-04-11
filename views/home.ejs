@@ -125,11 +125,17 @@ const prodByCat = {};
       <a href="/producto/<%=p.slug%>" class="ms-card" data-reveal data-delay="<%=i*80%>">
         <% const cardColors = Array.isArray(p.color_variants) ? p.color_variants.filter(c=>c && c.enabled !== false) : []; %>
         <% const firstCardColor = cardColors.length ? cardColors[0] : null; %>
-        <div class="ms-card-img" style="--img-scale:<%=firstCardColor&&firstCardColor.img_scale ? firstCardColor.img_scale : (p.img_scale||1)%>">
+        <div class="ms-card-img">
           <% if(p.badge){ %><span class="ms-card-badge"><%=p.badge%></span><% } %>
           <div class="ms-card-glow"></div>
-          <% const hpid = (p.id||p.slug||'').replace(/[^a-z0-9]/gi,''); %>
-          <img id="cardimg_<%=hpid%>" src="<%=firstCardColor&&firstCardColor.image_url ? firstCardColor.image_url : (p.image_url||'')%>" alt="<%=p.name%>" loading="lazy" style="object-fit:<%=firstCardColor&&firstCardColor.img_fit ? firstCardColor.img_fit : (p.img_fit||'contain')%>;object-position:<%=firstCardColor&&firstCardColor.img_pos ? firstCardColor.img_pos : (p.img_pos||'center')%>;transform:scale(<%=firstCardColor&&firstCardColor.img_scale ? firstCardColor.img_scale : (p.img_scale||1)%>);transform-origin:center center" onerror="this.style.display='none'">
+          <% const hpid = (p.id||p.slug||'').replace(/[^a-z0-9]/gi,'');
+             const cMedia = firstCardColor&&firstCardColor.image_url ? firstCardColor.image_url : (p.image_url||'');
+             const isCVid = String(cMedia).match(/\.(mp4|webm|ogg|mov)$/i); %>
+          <% if(isCVid) { %>
+             <video id="cardvid_<%=hpid%>" src="<%=cMedia%>" autoplay loop muted playsinline style="max-height:220px;width:100%;object-fit:contain;"></video>
+          <% } else { %>
+             <img id="cardimg_<%=hpid%>" src="<%=cMedia%>" alt="<%=p.name%>" loading="lazy" style="object-fit:<%=firstCardColor&&firstCardColor.img_fit ? firstCardColor.img_fit : (p.img_fit||'contain')%>;object-position:<%=firstCardColor&&firstCardColor.img_pos ? firstCardColor.img_pos : (p.img_pos||'center')%>;transform:scale(<%=firstCardColor&&firstCardColor.img_scale ? firstCardColor.img_scale : (p.img_scale||1)%>);transform-origin:center center" onerror="this.style.display='none'">
+          <% } %>
         </div>
         <div class="ms-card-body">
           <p class="ms-card-cat"><%=p.cat_name||p.category||''%></p>
