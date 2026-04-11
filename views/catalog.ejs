@@ -55,7 +55,13 @@
         <div class="ms-card-img" style="--img-scale:<%=firstCatalogColor&&firstCatalogColor.img_scale ? firstCatalogColor.img_scale : (p.img_scale||1)%>">
           <% if(p.badge){ %><span class="ms-card-badge"><%=p.badge%></span><% } %>
           <div class="ms-card-glow"></div>
-          <img src="<%=firstCatalogColor&&firstCatalogColor.image_url ? firstCatalogColor.image_url : (p.image_url||'')%>" alt="<%=p.name%>" loading="lazy" style="object-fit:<%=firstCatalogColor&&firstCatalogColor.img_fit ? firstCatalogColor.img_fit : (p.img_fit||'contain')%>;object-position:<%=firstCatalogColor&&firstCatalogColor.img_pos ? firstCatalogColor.img_pos : (p.img_pos||'center')%>;transform:scale(<%=firstCatalogColor&&firstCatalogColor.img_scale ? firstCatalogColor.img_scale : (p.img_scale||1)%>);transform-origin:center center" onerror="this.style.display='none'">
+          <% const srcMed = firstCatalogColor&&firstCatalogColor.image_url ? firstCatalogColor.image_url : (p.image_url||'');
+             const isVM = String(srcMed).match(/\.(mp4|webm|ogg|mov)$/i); %>
+          <% if(isVM) { %>
+            <video src="<%=srcMed%>" autoplay loop muted playsinline style="max-height:220px;width:100%;object-fit:contain;"></video>
+          <% } else { %>
+            <img src="<%=srcMed%>" alt="<%=p.name%>" loading="lazy" style="object-fit:<%=firstCatalogColor&&firstCatalogColor.img_fit ? firstCatalogColor.img_fit : (p.img_fit||'contain')%>;object-position:<%=firstCatalogColor&&firstCatalogColor.img_pos ? firstCatalogColor.img_pos : (p.img_pos||'center')%>;transform:scale(<%=firstCatalogColor&&firstCatalogColor.img_scale ? firstCatalogColor.img_scale : (p.img_scale||1)%>);transform-origin:center center" onerror="this.style.display='none'">
+          <% } %>
         </div>
         <div style="padding:16px 18px 20px;flex:1;display:flex;flex-direction:column">
           <p style="font-size:11px;color:#86868b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px"><%=p.category||''%></p>

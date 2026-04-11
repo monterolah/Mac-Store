@@ -77,7 +77,9 @@
       <input type="checkbox" class="bulk-check" value="<%=p.id%>" onchange="updateSelectedCounter()" style="width:18px;height:18px">
     </div>
     <div class="pc-img">
-      <img src="<%=p.image_url||''%>" alt="<%=p.name%>" onerror="this.style.display='none'">
+      <% const isVM = String(p.image_url||'').match(/\.(mp4|webm|ogg|mov)$/i); %>
+      <% if(isVM) { %> <video src="<%=p.image_url%>" autoplay loop muted playsinline style="max-height:130px;width:100%;object-fit:contain;"></video>
+      <% } else { %> <img src="<%=p.image_url||''%>" alt="<%=p.name%>" onerror="this.style.display='none'"> <% } %>
       <% if(p.badge){ %><div class="pc-badge"><%=p.badge%></div><% } %>
       <div class="pc-acts">
         <a href="/admin/productos/<%=p.id%>/editar" class="pc-act" title="Editar">

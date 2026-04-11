@@ -100,7 +100,13 @@
       <div class="ms-card-img" style="--img-scale:<%=firstColor&&firstColor.img_scale ? firstColor.img_scale : (p.img_scale||1)%>">
         <% if(p.badge){ %><span class="ms-card-badge"><%=p.badge%></span><% } %>
         <div class="ms-card-glow"></div>
-        <img id="cardimg_<%=pid%>" src="<%=firstColor&&firstColor.image_url ? firstColor.image_url : (p.image_url||'')%>" alt="<%=p.name%>" loading="lazy" style="object-fit:<%=firstColor&&firstColor.img_fit ? firstColor.img_fit : (p.img_fit||'contain')%>;object-position:<%=firstColor&&firstColor.img_pos ? firstColor.img_pos : (p.img_pos||'center')%>;transform:scale(<%=firstColor&&firstColor.img_scale ? firstColor.img_scale : (p.img_scale||1)%>);transform-origin:center center" onerror="this.style.display='none'">
+        <% const srcMed = firstColor&&firstColor.image_url ? firstColor.image_url : (p.image_url||'');
+           const isVM = String(srcMed).match(/\.(mp4|webm|ogg|mov)$/i); %>
+        <% if(isVM) { %>
+          <video id="cardvid_<%=pid%>" src="<%=srcMed%>" autoplay loop muted playsinline style="max-height:220px;width:100%;object-fit:contain;"></video>
+        <% } else { %>
+          <img id="cardimg_<%=pid%>" src="<%=srcMed%>" alt="<%=p.name%>" loading="lazy" style="object-fit:<%=firstColor&&firstColor.img_fit ? firstColor.img_fit : (p.img_fit||'contain')%>;object-position:<%=firstColor&&firstColor.img_pos ? firstColor.img_pos : (p.img_pos||'center')%>;transform:scale(<%=firstColor&&firstColor.img_scale ? firstColor.img_scale : (p.img_scale||1)%>);transform-origin:center center" onerror="this.style.display='none'">
+        <% } %>
       </div>
       <div style="padding:12px 14px 16px;flex:1;display:flex;flex-direction:column;gap:8px">
         <h3 style="font-size:15px;font-weight:600;letter-spacing:-.02em;line-height:1.2;margin:0"><%=p.name%></h3>
