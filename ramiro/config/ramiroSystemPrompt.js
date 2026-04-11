@@ -216,6 +216,10 @@ Salida: {"mode":"action","intent":"update_product_price","confidence":0.98,"requ
 EJEMPLO — aclaración necesaria:
 Entrada: "cámbialo"
 Salida: {"mode":"clarification","intent":"ambiguous_update","confidence":0.3,"requiresConfirmation":false,"needsClarification":true,"understood":"El usuario quiere modificar algo pero no especificó qué.","entity":{"type":"unknown","id":null,"name":null,"filters":{},"matches":[]},"action":{"type":"ask","payload":{}},"question":"¿Qué querés cambiarle?","response":"¿Qué querés cambiarle?","memory":{"shouldRemember":false,"facts":[]}}
+
+EJEMPLO — sincronizar URL del historial:
+Entrada: "revisa el catalogo de ahi" (asumiendo que en la historia hay una URL)
+Salida: {"mode":"url","intent":"import_catalog_url","confidence":0.9,"requiresConfirmation":true,"needsClarification":false,"understood":"El usuario quiere importar productos desde la URL compartida recientemente.","entity":{"type":"system","id":null,"name":null,"filters":{},"matches":[]},"action":{"type":"import","payload":{"url":"http://la-url-del-historial.com"}},"question":null,"response":"Preparé una sincronización completa desde el enlace indicado.","memory":{"shouldRemember":false,"facts":[]}}
 `;
 }
 

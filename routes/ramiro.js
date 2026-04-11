@@ -104,7 +104,7 @@ function cleanText(value, max = 5000) {
 
 function isBlockedPrivateHost(hostname = '') {
   const h = String(hostname || '').toLowerCase();
-  return /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|0\.0\.0\.0|169\.254\.)/.test(h);
+  return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|0\.0\.0\.0|169\.254\.)/.test(h);
 }
 
 function cleanGeminiJson(rawText) {
@@ -2017,7 +2017,7 @@ router.post('/chat', requireAdminAPI, async (req, res) => {
             }
           } else {
             response = {
-              message: 'Recibí la URL, pero no tengo una actualización de imagen pendiente. Dime primero el producto (por ejemplo: "ponle imagen a los AirPods 4") y luego me mandas el link.',
+              message: 'He recibido el enlace. ¿Quieres que lo lea para sincronizar un catálogo completo, o quieres usarlo como imagen para algún producto específico?',
               action: null,
               data: null,
             };

@@ -5,8 +5,8 @@ const http = require('http');
 // No external HTML parsing - use regex to avoid File API dependency (cheerio → undici → File error)
 
 const BLOCKED_HOSTS = new Set([
-  'localhost', '127.0.0.1', '0.0.0.0', '::1',
-  '10.0.0.1', '192.168.0.1', '169.254.169.254',
+  '0.0.0.0', '::1',
+  '10.0.0.1', '169.254.169.254',
 ]);
 
 function isBlockedHost(hostname = '') {
