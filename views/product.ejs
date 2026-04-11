@@ -108,6 +108,20 @@
       </div>
       </div>
 
+      <!-- CONTENEDOR GALERIA (Miniaturas) -->
+      <div id="galleryContainer" style="display:<%=initialColor&&(initialColor.gallery&&initialColor.gallery.length>0)?'flex':'none'%>;gap:16px;margin-top:24px;justify-content:center;overflow-x:auto">
+        <% if(initialColor) {
+             const gArr = [initialColor.image_url, ...(initialColor.gallery||[])].filter(Boolean);
+             if(gArr.length > 1) {
+               gArr.forEach((gUrl, idx) => { %>
+                 <button onclick="changeColor('<%=gUrl%>', window._selectedColor || '', '<%=initialColor.img_fit||'contain'%>', '<%=initialColor.img_pos||'center'%>', <%=cScale%>); document.querySelectorAll('.gal-thumb').forEach(b=>b.style.borderColor='transparent'); this.style.borderColor='#0071e3'" class="gal-thumb" style="width:64px;height:64px;border-radius:12px;border:2px solid <%=idx===0?'#0071e3':'transparent'%>;background:#f5f5f7;padding:4px;cursor:pointer;flex-shrink:0;transition:border-color .2s">
+                   <img src="<%=gUrl%>" style="width:100%;height:100%;object-fit:cover;border-radius:6px" onerror="this.style.display='none'">
+                 </button>
+               <% });
+             }
+           } %>
+      </div>
+
       <% const colorVariants = product.variants || []; %>
       <% if(colors.length){ %>
       <div style="text-align:center;margin-top:8px">
@@ -136,13 +150,14 @@
           </button>
           <% } else { %>
           <button
-            onclick="selectColor(this,this.dataset.img,this.dataset.name,this.dataset.fit,this.dataset.pos,this.dataset.scale,JSON.parse(decodeURIComponent(this.dataset.caps||'%5B%5D')))"
+            onclick="selectColor(this,this.dataset.img,this.dataset.name,this.dataset.fit,this.dataset.pos,this.dataset.scale,JSON.parse(decodeURIComponent(this.dataset.caps||'%5B%5D')), JSON.parse(decodeURIComponent(this.dataset.gallery||'%5B%5D')))"
             data-img="<%=cImg%>"
             data-name="<%=cName%>"
             data-fit="<%=cFit%>"
             data-pos="<%=cPos%>"
             data-scale="<%=cScale%>"
             data-caps="<%=encodeURIComponent(JSON.stringify(cCapsArr))%>"
+            data-gallery="<%=encodeURIComponent(JSON.stringify(c.gallery||[]))%>"
             title="<%=cName%>"
             class="color-swatch <%=i===0?'active':''%>"
             style="width:48px;height:48px;border-radius:50%;border:none;padding:0;cursor:pointer;background:transparent;transition:transform .2s, box-shadow .2s;box-shadow:<%=i===0?'0 0 0 3px rgba(0,113,227,.22)':'0 0 0 1px rgba(0,0,0,.08)'%>;position:relative;flex-shrink:0"
@@ -398,7 +413,7 @@ function changeColor(src, name, fit, pos, scale) {
   }, 200);
 }
 
-function selectColor(btn, imageUrl, colorName, imgFit, imgPos, imgScale, availCaps) {
+function selectColor(btn, imageUrl, colorName, imgFit, imgPos, imgScale, availCaps, galleryArr=[]) {
   document.querySelectorAll('.color-swatch').forEach(s => {
     s.style.boxShadow    = '0 0 0 1px rgba(0,0,0,.08)';
     s.style.transform    = 'scale(1)';
@@ -428,6 +443,22 @@ function selectColor(btn, imageUrl, colorName, imgFit, imgPos, imgScale, availCa
 
   if(imageUrl) {
     changeColor(imageUrl, colorName, imgFit, imgPos, imgScale);
+  }
+  
+  const galCont = document.getElementById('galleryContainer');
+  if(galCont) {
+    const allG = [imageUrl, ...(galleryArr||[])].filter(Boolean);
+    if(allG.length > 1) {
+      galCont.style.display = 'flex';
+      galCont.innerHTML = allG.map((g, idx) => `
+        <button onclick="changeColor('${g}', window._selectedColor||'', '${imgFit}', '${imgPos}', ${imgScale}); document.querySelectorAll('.gal-thumb').forEach(b=>b.style.borderColor='transparent'); this.style.borderColor='#0071e3'" class="gal-thumb" style="width:64px;height:64px;border-radius:12px;border:2px solid ${idx===0?'#0071e3':'transparent'};background:#f5f5f7;padding:4px;cursor:pointer;flex-shrink:0;transition:border-color .2s">
+          <img src="${g}" style="width:100%;height:100%;object-fit:cover;border-radius:6px" onerror="this.style.display='none'">
+        </button>
+      `).join('');
+    } else {
+      galCont.style.display = 'none';
+      galCont.innerHTML = '';
+    }
   }
 }
 </script>

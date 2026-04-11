@@ -165,6 +165,24 @@
             </div>
           </div>
 
+          <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e8e8ed;margin-bottom:10px">
+            <label style="font-size:10px;color:#86868b;font-weight:600;display:block;margin-bottom:6px">GALERÍA DE FOTOS ADICIONALES (OPCIONAL)</label>
+            <div class="color-gallery-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+              <% const gallery = Array.isArray(c.gallery) ? c.gallery : []; %>
+              <% gallery.forEach(gUrl => { %>
+                <div class="gallery-item-row" style="display:flex;gap:6px;align-items:center">
+                   <img src="<%=gUrl%>" style="width:32px;height:32px;border-radius:4px;object-fit:cover;background:#f5f5f7" onerror="this.style.display='none'">
+                   <input class="si gallery-url-input" value="<%=gUrl%>" placeholder="URL de la imagen" style="flex:1;font-size:12px;padding:4px 8px" oninput="this.previousElementSibling.src=this.value">
+                   <button type="button" class="sdel" onclick="this.closest('.gallery-item-row').remove()" style="margin:0;padding:2px 6px">×</button>
+                </div>
+              <% }) %>
+            </div>
+            <div style="display:flex;gap:6px">
+               <button type="button" class="adm-btn-s" style="font-size:11px;padding:4px 8px" onclick="addGalleryInput(this)">+ Añadir URL</button>
+               <label class="adm-btn-s" style="font-size:11px;padding:4px 8px;cursor:pointer;margin:0;display:flex;align-items:center">+ Subir foto<input type="file" accept="image/*" style="display:none" onchange="uploadGalleryImg(this)"></label>
+            </div>
+          </div>
+
           <% if(allVariants.length){ %>
           <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e8e8ed">
             <label style="font-size:10px;color:#86868b;font-weight:600;display:block;margin-bottom:6px">CAPACIDADES DISPONIBLES EN ESTE COLOR</label>
@@ -526,6 +544,16 @@ function addColor(){
             </div>
           </div>
         </div>
+
+        <div style="background:#fff;border-radius:8px;padding:8px 10px;border:1px solid #e8e8ed;margin-top:10px">
+          <label style="font-size:10px;color:#86868b;font-weight:600;display:block;margin-bottom:6px">GALERÍA DE FOTOS ADICIONALES (OPCIONAL)</label>
+          <div class="color-gallery-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+          <div style="display:flex;gap:6px">
+             <button type="button" class="adm-btn-s" style="font-size:11px;padding:4px 8px" onclick="addGalleryInput(this)">+ Añadir URL</button>
+             <label class="adm-btn-s" style="font-size:11px;padding:4px 8px;cursor:pointer;margin:0;display:flex;align-items:center">+ Subir foto<input type="file" accept="image/*" style="display:none" onchange="uploadGalleryImg(this)"></label>
+          </div>
+        </div>
+
       </div>
       <button type="button" class="sdel" onclick="this.closest('.color-variant-row').remove()">×</button>
     </div>
@@ -578,6 +606,35 @@ function updateColorImgPreview(row,url){
   img.style.objectPosition=pos;
   img.style.transform=`scale(${scale})`;
   img.style.transformOrigin='center center';
+}
+
+// ── GALERÍA ───────────────────────────────────────────────────────────────
+function addGalleryInput(btn, url='') {
+  const list = btn.closest('div').previousElementSibling;
+  const div = document.createElement('div');
+  div.className = 'gallery-item-row';
+  div.style.cssText = 'display:flex;gap:6px;align-items:center';
+  div.innerHTML = `
+    <img src="${url}" style="width:32px;height:32px;border-radius:4px;object-fit:cover;background:#f5f5f7" onerror="this.style.display='none'">
+    <input class="si gallery-url-input" value="${url}" placeholder="URL de la imagen" style="flex:1;font-size:12px;padding:4px 8px" oninput="this.previousElementSibling.src=this.value;this.previousElementSibling.style.display=''">
+    <button type="button" class="sdel" onclick="this.closest('.gallery-item-row').remove()" style="margin:0;padding:2px 6px">×</button>
+  `;
+  list.appendChild(div);
+  if(!url) div.querySelector('input').focus();
+}
+
+async function uploadGalleryImg(input) {
+  if(!input.files||!input.files[0]) return;
+  const btnDiv = input.closest('label');
+  const oldText = btnDiv.innerHTML;
+  btnDiv.innerHTML = 'Subiendo...';
+  const fd = new FormData(); fd.append('image', input.files[0]);
+  const res = await fetch('/api/upload', {method:'POST', headers:{'Authorization':'Bearer '+TOKEN}, body:fd});
+  if(res.ok) {
+    const d = await res.json();
+    addGalleryInput(btnDiv, d.url);
+  } else flash('Error al subir', 'error');
+  btnDiv.innerHTML = '+ Subir foto<input type="file" accept="image/*" style="display:none" onchange="uploadGalleryImg(this)">';
 }
 
 // ── IMAGEN PRINCIPAL ──────────────────────────────────────────────────────
@@ -682,7 +739,8 @@ async function saveProduct(){
     const detailScale=(parseInt(row.querySelector('.color-detail-scale')?.value)||100)/100;
     const caps=[...row.querySelectorAll('.color-cap-check:checked')].map(cb=>cb.value);
     const enabled=row.querySelector('.color-enabled') ? row.querySelector('.color-enabled').checked : true;
-    if(name||img) colors.push({name:name||'',image_url:img||swatch||'',swatch_url:swatch||img||'',img_fit:fit,img_pos:pos,img_scale:scale,detail_img_scale:detailScale,available_caps:caps,enabled});
+    const galleryItems=[...row.querySelectorAll('.gallery-url-input')].map(i=>i.value.trim()).filter(Boolean);
+    if(name||img) colors.push({name:name||'',image_url:img||swatch||'',swatch_url:swatch||img||'',img_fit:fit,img_pos:pos,img_scale:scale,detail_img_scale:detailScale,available_caps:caps,enabled,gallery:galleryItems});
   });
 
   const fd=new FormData();
