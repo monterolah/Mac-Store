@@ -69,7 +69,8 @@ const heroProduct = featured && featured[0];
 
 <!-- ══ SHOWCASES ══ -->
 <%
-const slugOrder = ['mac','iphone','ipad','apple-watch','airpods'];
+// Siempre muestra todas las categorías activas del admin (editor y tienda usan la misma fuente)
+const slugOrder = (categories||[]).map(c => c.slug);
 const catMap = {};
 (categories||[]).forEach(c => catMap[c.slug] = c);
 const prodByCat = {};
@@ -122,62 +123,65 @@ const prodByCat = {};
     </div>
     <div class="ms-catalog-grid">
       <% (featured||[]).forEach((p,i)=>{ %>
-      <a href="/producto/<%=p.slug%>" class="ms-card" data-reveal data-delay="<%=i*80%>">
-        <% const cardColors = Array.isArray(p.color_variants) ? p.color_variants.filter(c=>c && c.enabled !== false) : []; %>
-        <% const firstCardColor = cardColors.length ? cardColors[0] : null; %>
-        <div class="ms-card-img">
-          <% if(p.badge){ %><span class="ms-card-badge"><%=p.badge%></span><% } %>
-          <div class="ms-card-glow"></div>
-          <% const hpid = (p.id||p.slug||'').replace(/[^a-z0-9]/gi,'');
-             const cMedia = firstCardColor&&firstCardColor.image_url ? firstCardColor.image_url : (p.image_url||'');
-             const isCVid = String(cMedia).match(/\.(mp4|webm|ogg|mov)$/i); %>
-          <% if(isCVid) { %>
-             <video id="cardvid_<%=hpid%>" src="<%=cMedia%>" autoplay loop muted playsinline style="max-height:220px;width:100%;object-fit:contain;"></video>
+      <% const cardColors = Array.isArray(p.color_variants) ? p.color_variants.filter(c=>c && c.enabled !== false) : []; %>
+      <% const firstCardColor = cardColors.length ? cardColors[0] : null; %>
+      <% const cardAllCaps = Array.isArray(p.variants) ? p.variants.map(v=>v.label).filter(Boolean) : []; %>
+      <% const firstHomeVariant = Array.isArray(p.variants) ? p.variants.find(v=>v&&v.label) : null; %>
+      <% const hpid = (p.id||p.slug||'').replace(/[^a-z0-9]/gi,''); %>
+      <% const cMedia = firstCardColor&&firstCardColor.image_url ? firstCardColor.image_url : (p.image_url||''); %>
+      <% const isCVid = String(cMedia).match(/\.(mp4|webm|ogg|mov)$/i); %>
+      <% const waTextHome = 'Hola%2C%20quiero%20comprar%20' + encodeURIComponent(p.name) + (firstHomeVariant?' '+encodeURIComponent(firstHomeVariant.label):'') + '%20(' + encodeURIComponent(formatPrice(firstHomeVariant&&firstHomeVariant.price?firstHomeVariant.price:p.price)) + ')'; %>
+      <div class="ms-card" data-reveal data-delay="<%=i*80%>" style="display:flex;flex-direction:column;padding:0;overflow:hidden">
+        <a href="/producto/<%=p.slug%>" style="text-decoration:none;color:inherit;display:block;background:#fff">
+          <div class="ms-card-img" style="margin-bottom:0;background:#fff">
+            <% if(p.badge){ %><span class="ms-card-badge"><%=p.badge%></span><% } %>
+            <div class="ms-card-glow"></div>
+            <% if(isCVid) { %>
+               <video id="cardvid_<%=hpid%>" src="<%=cMedia%>" autoplay loop muted playsinline style="max-height:220px;width:100%;object-fit:contain;"></video>
+            <% } else { %>
+               <img id="cardimg_<%=hpid%>" src="<%=cMedia%>" alt="<%=p.name%>" loading="lazy" style="object-fit:<%=firstCardColor&&firstCardColor.img_fit ? firstCardColor.img_fit : (p.img_fit||'contain')%>;object-position:<%=firstCardColor&&firstCardColor.img_pos ? firstCardColor.img_pos : (p.img_pos||'center')%>;transform:scale(<%=firstCardColor&&firstCardColor.img_scale ? firstCardColor.img_scale : (p.img_scale||1)%>);transform-origin:center center" onerror="this.style.display='none'">
+            <% } %>
+          </div>
+        </a>
+        <div style="background:#f5f5f7;padding:14px 16px 16px;flex:1;display:flex;flex-direction:column">
+          <a href="/producto/<%=p.slug%>" style="text-decoration:none;color:inherit">
+            <h3 class="ms-card-name" style="margin-bottom:4px"><%=p.name%></h3>
+            <% if(firstHomeVariant){ %><p style="font-size:13px;color:#515154;margin:0 0 6px"><%=firstHomeVariant.label%></p><% } %>
+          </a>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">
+            <div>
+              <% if(p.original_price){ %><span class="ms-card-orig" style="margin-right:5px"><%=formatPrice(p.original_price)%></span><% } %>
+              <span class="ms-card-price"><%=formatPrice(p.price)%></span>
+            </div>
+            <% if(cardColors.length){ %>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end" onclick="event.preventDefault()">
+              <% cardColors.slice(0,5).forEach((c,ci)=>{
+                const sw = c.swatch_url||c.image_url||'';
+                const img = c.image_url||p.image_url||'';
+                const caps = Array.isArray(c.available_caps)&&c.available_caps.length ? c.available_caps : cardAllCaps;
+                if(!sw) return;
+              %>
+              <span class="ms-card-swatch <%=ci===0?'active':''%>"
+                style="width:18px;height:18px;background-image:url('<%=sw%>')"
+                title="<%=c.name||''%>"
+                onclick="(function(el,e){e.preventDefault();e.stopPropagation();swatchClick(el,'<%=hpid%>','<%=img%>',<%=JSON.stringify(caps)%>,'<%=c.img_fit||p.img_fit||'contain'%>','<%=c.img_pos||p.img_pos||'center'%>','<%=c.img_scale||p.img_scale||1%>')})(this,event)"
+              ></span>
+              <% }) %>
+              <% if(cardColors.length>5){ %><span class="ms-card-swatch-more" style="width:18px;height:18px;font-size:9px">+<%=cardColors.length-5%></span><% } %>
+            </div>
+            <% } %>
+          </div>
+          <% if(settings&&settings.store_whatsapp){ %>
+          <a href="https://wa.me/<%=settings.store_whatsapp%>?text=<%=waTextHome%>" target="_blank"
+             style="display:block;width:100%;text-align:center;background:#0071e3;color:#fff;padding:11px 0;border-radius:980px;font-size:15px;font-weight:600;text-decoration:none;transition:background .2s;box-sizing:border-box"
+             onmouseover="this.style.background='#0077ed'" onmouseout="this.style.background='#0071e3'">Comprar</a>
           <% } else { %>
-             <img id="cardimg_<%=hpid%>" src="<%=cMedia%>" alt="<%=p.name%>" loading="lazy" style="object-fit:<%=firstCardColor&&firstCardColor.img_fit ? firstCardColor.img_fit : (p.img_fit||'contain')%>;object-position:<%=firstCardColor&&firstCardColor.img_pos ? firstCardColor.img_pos : (p.img_pos||'center')%>;transform:scale(<%=firstCardColor&&firstCardColor.img_scale ? firstCardColor.img_scale : (p.img_scale||1)%>);transform-origin:center center" onerror="this.style.display='none'">
+          <a href="/producto/<%=p.slug%>"
+             style="display:block;width:100%;text-align:center;background:#0071e3;color:#fff;padding:11px 0;border-radius:980px;font-size:15px;font-weight:600;text-decoration:none;transition:background .2s;box-sizing:border-box"
+             onmouseover="this.style.background='#0077ed'" onmouseout="this.style.background='#0071e3'">Comprar</a>
           <% } %>
         </div>
-        <div class="ms-card-body">
-          <p class="ms-card-cat"><%=p.cat_name||p.category||''%></p>
-          <h3 class="ms-card-name"><%=p.name%></h3>
-          <% const cardAllCaps = Array.isArray(p.variants) ? p.variants.map(v=>v.label).filter(Boolean) : []; %>
-          <% if(cardColors.length){ %>
-          <div class="ms-card-swatches">
-            <% cardColors.slice(0,5).forEach((c,ci)=>{
-              const sw = c.swatch_url||c.image_url||'';
-              const img = c.image_url||p.image_url||'';
-              const caps = Array.isArray(c.available_caps)&&c.available_caps.length ? c.available_caps : cardAllCaps;
-              if(!sw) return;
-            %>
-            <span class="ms-card-swatch <%=ci===0?'active':''%>"
-              style="background-image:url('<%=sw%>')"
-              title="<%=c.name||''%>"
-              onclick="(function(el,e){e.preventDefault();e.stopPropagation();swatchClick(el,'<%=hpid%>','<%=img%>',<%=JSON.stringify(caps)%>,'<%=c.img_fit||p.img_fit||'contain'%>','<%=c.img_pos||p.img_pos||'center'%>','<%=c.img_scale||p.img_scale||1%>')})(this,event)"
-            ></span>
-            <% }) %>
-            <% if(cardColors.length>5){ %><span class="ms-card-swatch-more">+<%=cardColors.length-5%></span><% } %>
-          </div>
-          <% } %>
-          <% if(cardAllCaps.length){ %>
-          <div id="caps_<%=hpid%>" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">
-            <% const hFirstCaps = cardColors.length&&Array.isArray(cardColors[0].available_caps)&&cardColors[0].available_caps.length ? cardColors[0].available_caps : cardAllCaps; %>
-            <% cardAllCaps.forEach(cap=>{ const active=hFirstCaps.includes(cap); %>
-            <span data-cap="<%=cap%>" style="font-size:10px;border:1px solid <%=active?'#d2d2d7':'#e8e8ed'%>;border-radius:5px;padding:1px 6px;color:<%=active?'#515154':'#c0c0c0'%>;text-decoration:<%=active?'none':'line-through'%>"><%=cap%></span>
-            <% }) %>
-          </div>
-          <% } %>
-          <% if((p.price||0) > 150 && p.enable_installments !== false){ %>
-          <div style="margin:8px 0 4px">
-            <div style="font-size:12px;color:#86868b">10 cuotas de: <strong style="color:#1d1d1f">$<%=(p.price/10).toFixed(2)%></strong></div>
-            <div style="font-size:12px;color:#86868b">6 cuotas de: <strong style="color:#1d1d1f">$<%=(p.price/6).toFixed(2)%></strong></div>
-          </div>
-          <% } %>
-          <div class="ms-card-foot">
-            <span class="ms-card-price"><%=formatPrice(p.price)%></span>
-            <% if(p.original_price){ %><span class="ms-card-orig"><%=formatPrice(p.original_price)%></span><% } %>
-          </div>
-        </div>
-      </a>
+      </div>
       <% }) %>
     </div>
     <div style="text-align:center;margin-top:48px" data-reveal>

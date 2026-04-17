@@ -1,195 +1,175 @@
+'use strict';
 const express = require('express');
-const { getFirestore } = require('../db/firebase');
 const { getCache, setCache } = require('../utils/cache');
-const router  = express.Router();
-const fmt     = p => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(p||0);
+const {
+  getSettings, getAllProducts, getAllCategories, getAllBanners, getAllAnnouncements,
+  getProductBySlug, getPageDesign,
+} = require('../db/sqlite');
+const router = express.Router();
+const fmt = p => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(p || 0);
 
-// ── Leer cookie sin cookie-parser ─────────────────────────────────────────
 function getCookie(req, name) {
-  const str = req.headers.cookie || '';
+  const str  = req.headers.cookie || '';
   const pair = str.split(';').find(c => c.trim().startsWith(name + '='));
   return pair ? decodeURIComponent(pair.split('=')[1].trim()) : null;
 }
 
-// ── Modo vendedor: inyectar en todas las respuestas ───────────────────────
 router.use((req, res, next) => {
   res.locals.vendorMode = getCookie(req, 'vendorMode') === '1';
   next();
 });
 
-// ── Activar / desactivar modo tienda ─────────────────────────────────────
-router.get('/tienda', (req, res) => {
-  res.cookie('vendorMode', '1', { maxAge: 8 * 60 * 60 * 1000, sameSite: 'lax' });
-  res.redirect('/');
-});
-router.get('/salir-tienda', (req, res) => {
-  res.clearCookie('vendorMode');
-  res.redirect('/');
-});
+router.get('/tienda',       (req, res) => { res.cookie('vendorMode', '1', { maxAge: 8*60*60*1000, sameSite:'lax' }); res.redirect('/'); });
+router.get('/salir-tienda', (req, res) => { res.clearCookie('vendorMode'); res.redirect('/'); });
 
-// ── Helpers de query optimizados ──────────────────────────────────────────────
-
-async function getSiteData() {
+// ── Helpers cacheados ─────────────────────────────────────────────────────
+function cachedSettings() {
   if (getCache('settings')) return getCache('settings');
-  const doc = await getFirestore().collection('settings').doc('main').get();
-  const data = doc.exists ? doc.data() : {};
+  const data = getSettings();
   setCache('settings', data);
   return data;
 }
 
-async function getCategories() {
+function cachedCategories() {
   if (getCache('categories')) return getCache('categories');
-  const snap = await getFirestore()
-    .collection('categories')
-    .where('active', '==', true)
-    .orderBy('sort_order', 'asc')
-    .get();
-  const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const data = getAllCategories({ active: true });
   setCache('categories', data);
   return data;
 }
 
-async function getAnnouncements() {
+function cachedAnnouncements() {
   if (getCache('announcements')) return getCache('announcements');
-  const snap = await getFirestore()
-    .collection('announcements')
-    .where('active', '==', true)
-    .orderBy('sort_order', 'asc')
-    .get();
-  const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const data = getAllAnnouncements({ active: true });
   setCache('announcements', data);
   return data;
 }
 
-function docToObj(doc) {
-  return { id: doc.id, ...doc.data() };
+// Devuelve el CSS guardado desde el editor (si existe)
+function getEditorCss(pageName) {
+  try {
+    const d = getPageDesign(pageName);
+    return (d && d.css) ? d.css : '';
+  } catch (e) { return ''; }
 }
 
-// ── HOME ──────────────────────────────────────────────────────────────────────
-router.get('/', async (req, res) => {
+// Si el editor guardó HTML para esta página, lo devuelve; si no, null
+function getSavedHtml(pageName) {
   try {
-    const db = getFirestore();
+    const d = getPageDesign(pageName);
+    return (d && d.html && d.html.trim()) ? d.html : null;
+  } catch (e) { return null; }
+}
 
-    // Si banners y productos están en caché explícita para el home:
-    let banners = getCache('homeBanners');
+// ── HOME ──────────────────────────────────────────────────────────────────
+router.get('/', (req, res) => {
+  try {
+    const saved = getSavedHtml('home');
+    if (saved) return res.send(saved);
+
+    const settings      = cachedSettings();
+    const categories    = cachedCategories();
+    const announcements = cachedAnnouncements();
+
+    let banners     = getCache('homeBanners');
     let allProducts = getCache('homeProducts');
-    const promises = [
-      getSiteData(),
-      getCategories(),
-      !banners ? db.collection('banners').where('active', '==', true).orderBy('sort_order', 'asc').get() : Promise.resolve(null),
-      !allProducts ? db.collection('products').where('active', '==', true).orderBy('sort_order', 'asc').get() : Promise.resolve(null),
-      getAnnouncements()
-    ];
 
-    const [settings, categories, bannersSnap, productsSnap, announcements] = await Promise.all(promises);
+    if (!banners)     { banners = getAllBanners({ active: true }); setCache('homeBanners', banners); }
+    if (!allProducts) { allProducts = getAllProducts({ active: true }); setCache('homeProducts', allProducts); }
 
-    if (!banners) {
-      banners = bannersSnap.docs.map(docToObj);
-      setCache('homeBanners', banners);
-    }
-    if (!allProducts) {
-      allProducts = productsSnap.docs.map(docToObj);
-      setCache('homeProducts', allProducts);
-    }
-    const featured    = allProducts.filter(p => p.featured);
-
-    // Solo mostrar categorías que tienen productos (o forzadas)
+    const featured       = allProducts.filter(p => p.featured);
     const activeCatSlugs = new Set(allProducts.map(p => p.category));
     const visibleCats    = categories.filter(c => c.force_show || activeCatSlugs.has(c.slug));
 
     res.render('home', {
       req, announcements,
-      title: settings.store_name || 'MacStore',
+      title:       settings.store_name || 'MacStore',
       description: settings.store_tagline || '',
-      settings, categories: visibleCats, banners, featured, formatPrice: fmt
+      settings, categories: visibleCats, banners, featured,
+      formatPrice: fmt,
+      editorCss:   getEditorCss('home'),
     });
   } catch (e) { console.error(e); res.status(500).send('Error interno del servidor'); }
 });
 
-// ── CATEGORY ──────────────────────────────────────────────────────────────────
-router.get('/categoria/:slug', async (req, res) => {
+// ── CATEGORY ──────────────────────────────────────────────────────────────
+router.get('/categoria/:slug', (req, res) => {
   try {
-    const db   = getFirestore();
-    const slug = req.params.slug;
+    const slug          = req.params.slug;
+    const settings      = cachedSettings();
+    const categories    = cachedCategories();
+    const announcements = cachedAnnouncements();
+    const category      = categories.find(c => c.slug === slug);
 
-    // Query de productos filtrada por categoría directamente en Firestore
-    const [settings, categories, productsSnap, announcements] = await Promise.all([
-      getSiteData(),
-      getCategories(),
-      db.collection('products')
-        .where('active', '==', true)
-        .where('category', '==', slug)
-        .get(),
-      getAnnouncements()
-    ]);
+    if (!category) return res.status(404).render('404', { title:'No encontrado', description:'', settings, categories, announcements });
 
-    const category = categories.find(c => c.slug === slug);
-    if (!category) return res.status(404).render('404', { title: 'No encontrado', description: '', settings, categories, announcements });
-
-    const products = productsSnap.docs.map(docToObj).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-    res.render('category', { req, title: category.name, description: category.description || '', settings, categories, category, products, announcements, formatPrice: fmt });
+    const products = getAllProducts({ active: true, category: slug });
+    res.render('category', {
+      req, title: category.name, description: category.description || '',
+      settings, categories, category, products, announcements,
+      formatPrice: fmt,
+      editorCss:   getEditorCss('category'),
+    });
   } catch (e) { console.error(e); res.status(500).send('Error interno del servidor'); }
 });
 
-// ── PRODUCT ───────────────────────────────────────────────────────────────────
-router.get('/producto/:slug', async (req, res) => {
+// ── PRODUCT ───────────────────────────────────────────────────────────────
+router.get('/producto/:slug', (req, res) => {
   try {
-    const db   = getFirestore();
-    const slug = req.params.slug;
+    const slug          = req.params.slug;
+    const settings      = cachedSettings();
+    const categories    = cachedCategories();
+    const announcements = cachedAnnouncements();
+    const product       = getProductBySlug(slug);
 
-    // Buscar producto por slug sin traer toda la colección
-    const [settings, categories, productSnap, announcements] = await Promise.all([
-      getSiteData(),
-      getCategories(),
-      db.collection('products').where('slug', '==', slug).where('active', '==', true).limit(1).get(),
-      getAnnouncements()
-    ]);
+    if (!product || !product.active) return res.status(404).render('404', { title:'No encontrado', description:'', settings, categories, announcements });
 
-    if (productSnap.empty) return res.status(404).render('404', { title: 'No encontrado', description: '', settings, categories, announcements });
+    const related = getAllProducts({ active: true, category: product.category })
+      .filter(p => p.id !== product.id)
+      .slice(0, 4);
 
-    const product = docToObj(productSnap.docs[0]);
-
-    // Productos relacionados: misma categoría, máximo 4
-    const relatedSnap = await db.collection('products')
-      .where('active', '==', true)
-      .where('category', '==', product.category)
-      .limit(5)
-      .get();
-
-    const related = relatedSnap.docs.map(docToObj).filter(p => p.id !== product.id).slice(0, 4);
-
-    res.render('product', { req, title: product.name, description: product.description || '', settings, categories, product, related, announcements, formatPrice: fmt });
+    res.render('product', {
+      req, title: product.name, description: product.description || '',
+      settings, categories, product, related, announcements,
+      formatPrice: fmt,
+      editorCss:   getEditorCss('product'),
+    });
   } catch (e) { console.error(e); res.status(500).send('Error interno del servidor'); }
 });
 
-// ── CATALOG ───────────────────────────────────────────────────────────────────
-router.get('/productos', async (req, res) => {
+// ── CATALOG ───────────────────────────────────────────────────────────────
+router.get('/productos', (req, res) => {
   try {
-    const db  = getFirestore();
     const cat = req.query.cat;
+    const q   = (req.query.q || '').trim().toLowerCase();
 
-    // Si hay filtro de categoría, query directa; si no, todos activos
-    let productsQuery = db.collection('products').where('active', '==', true).orderBy('sort_order', 'asc');
-    if (cat) productsQuery = productsQuery.where('category', '==', cat);
+    // Usar HTML guardado por el editor solo si no hay filtros activos
+    if (!q && !cat) {
+      const saved = getSavedHtml('catalog');
+      if (saved) return res.send(saved);
+    }
 
-    const [settings, categories, productsSnap, announcements] = await Promise.all([
-      getSiteData(),
-      getCategories(),
-      productsQuery.get(),
-      getAnnouncements()
-    ]);
+    const settings      = cachedSettings();
+    const categories    = cachedCategories();
+    const announcements = cachedAnnouncements();
 
-    let products = productsSnap.docs.map(docToObj);
-    const q = (req.query.q || '').trim().toLowerCase();
+    let products = getAllProducts({ active: true, ...(cat ? { category: cat } : {}) });
     if (q) {
       products = products.filter(p =>
-        (p.name || '').toLowerCase().includes(q) ||
+        (p.name        || '').toLowerCase().includes(q) ||
         (p.description || '').toLowerCase().includes(q) ||
-        (p.category || '').toLowerCase().includes(q) ||
-        (p.badge || '').toLowerCase().includes(q)
+        (p.category    || '').toLowerCase().includes(q) ||
+        (p.badge       || '').toLowerCase().includes(q)
       );
     }
-    res.render('catalog', { req, title: q ? `Búsqueda: ${req.query.q}` : 'Catálogo', description: 'Todos los productos Apple disponibles', settings, categories, products, announcements, formatPrice: fmt, searchQuery: req.query.q || '' });
+
+    res.render('catalog', {
+      req,
+      title: q ? `Búsqueda: ${req.query.q}` : 'Catálogo',
+      description: 'Todos los productos Apple disponibles',
+      settings, categories, products, announcements,
+      formatPrice: fmt, searchQuery: req.query.q || '',
+      editorCss: getEditorCss('catalog'),
+    });
   } catch (e) { console.error(e); res.status(500).send('Error interno del servidor'); }
 });
 

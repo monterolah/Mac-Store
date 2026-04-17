@@ -39,3 +39,12 @@ __MACOSX/
 .vscode/
 .idea/
 *.swp
+
+# ── Base de datos local (contiene datos reales) ──
+macstore.db
+macstore.db-shm
+macstore.db-wal
+session-archives/
+
+# ── Exportaciones estáticas ───────────────────────
+exports/

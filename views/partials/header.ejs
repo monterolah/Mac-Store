@@ -6,6 +6,7 @@
 <title><%=title||settings.store_name||'MacStore'%><% if(settings.store_tagline){ %> — <%=settings.store_tagline%><% } %></title>
 <meta name="description" content="<%=(typeof description!=='undefined'&&description)?description:(settings.store_tagline||'')%>">
 <link rel="stylesheet" href="/css/macstore.css">
+<% if(typeof editorCss !== 'undefined' && editorCss){ %><style><%- editorCss %></style><% } %>
 <script src="/js/protect.js"></script>
 </head>
 <body>

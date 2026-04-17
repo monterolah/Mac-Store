@@ -6,9 +6,39 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       Actualizar tienda
     </button>
+    <a href="/admin/editor" class="adm-btn-p" style="background:#6c47ff;text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      Editar tienda
+    </a>
+    <button onclick="exportSiteAction('guardar')" class="adm-btn-s" id="saveBtn" title="Guarda el catálogo como HTML en el servidor">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Guardar
+    </button>
+    <button onclick="exportSiteAction('publicar')" class="adm-btn-p" id="publishBtn" title="Genera ZIP listo para subir a GoDaddy">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+      Publicar para GoDaddy
+    </button>
     <a href="/admin/productos/nuevo" class="adm-btn-p">+ Nuevo producto</a>
   </div>
 </div>
+
+<!-- Modal de progreso de exportación -->
+<div id="exportModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:32px 36px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.2);text-align:center">
+    <div id="exportSpinner" style="margin-bottom:16px">
+      <svg style="animation:spin 1s linear infinite" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#0071e3" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+    </div>
+    <div id="exportIcon" style="display:none;margin-bottom:16px;font-size:36px"></div>
+    <div id="exportTitle" style="font-size:17px;font-weight:700;color:#1d1d1f;margin-bottom:8px">Generando sitio…</div>
+    <div id="exportMsg"   style="font-size:14px;color:#515154;line-height:1.5"></div>
+    <button id="exportClose" onclick="document.getElementById('exportModal').style.display='none'"
+      style="display:none;margin-top:20px;background:#1d1d1f;color:#fff;border:none;padding:10px 28px;border-radius:980px;font-size:14px;font-weight:600;cursor:pointer">
+      Cerrar
+    </button>
+  </div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
 <script>
 async function bumpVersion(){
   const btn = document.getElementById('bumpBtn');
@@ -18,6 +48,94 @@ async function bumpVersion(){
     btn.textContent = '✓ Actualizado';
     setTimeout(()=>{ btn.disabled=false; btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Actualizar tienda'; }, 2500);
   } catch(e){ btn.disabled=false; btn.textContent='Error'; }
+}
+
+async function exportSiteAction(mode) {
+  const modal    = document.getElementById('exportModal');
+  const spinner  = document.getElementById('exportSpinner');
+  const iconEl   = document.getElementById('exportIcon');
+  const titleEl  = document.getElementById('exportTitle');
+  const msgEl    = document.getElementById('exportMsg');
+  const closeBtn = document.getElementById('exportClose');
+
+  // Reset estado
+  spinner.style.display  = 'block';
+  iconEl.style.display   = 'none';
+  closeBtn.style.display = 'none';
+  titleEl.textContent    = mode === 'publicar' ? 'Generando ZIP para GoDaddy…' : 'Guardando sitio…';
+  msgEl.textContent      = 'Esto puede tardar unos segundos, por favor espera.';
+  modal.style.display    = 'flex';
+
+  document.getElementById(mode === 'publicar' ? 'publishBtn' : 'saveBtn').disabled = true;
+
+  try {
+    if (mode === 'publicar') {
+      // Descarga directa del ZIP
+      const a = document.createElement('a');
+      a.href = '/api/export?mode=publicar';
+      a.style.display = 'none';
+
+      // Hacemos fetch con token para la descarga
+      const resp = await fetch('/api/export?mode=publicar', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer <%=token%>' }
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      const cd   = resp.headers.get('Content-Disposition') || '';
+      const name = cd.match(/filename="([^"]+)"/)?.[1] || 'macstore.zip';
+
+      spinner.style.display  = 'none';
+      iconEl.style.display   = 'block';
+      iconEl.textContent     = '✅';
+      titleEl.textContent    = '¡ZIP listo!';
+      msgEl.innerHTML        = `Tu sitio fue generado. La descarga comenzará automáticamente.<br><br>
+        <strong>¿Cómo subirlo a GoDaddy?</strong><br>
+        1. Entra a cPanel → Administrador de archivos<br>
+        2. Abre la carpeta <code>public_html</code><br>
+        3. Sube el ZIP y extráelo ahí<br>
+        4. ¡Listo, tu catálogo está publicado!`;
+      closeBtn.style.display = 'inline-block';
+
+      // Trigger descarga
+      const tmpA = document.createElement('a');
+      tmpA.href = url; tmpA.download = name;
+      document.body.appendChild(tmpA); tmpA.click();
+      document.body.removeChild(tmpA);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+    } else {
+      const resp = await fetch('/api/export?mode=guardar', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer <%=token%>' }
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Error al guardar');
+
+      spinner.style.display  = 'none';
+      iconEl.style.display   = 'block';
+      iconEl.textContent     = '💾';
+      titleEl.textContent    = 'Sitio guardado';
+      msgEl.innerHTML        = `
+        <strong>${data.stats.products} productos</strong> y
+        <strong>${data.stats.categories} categorías</strong> exportados.<br>
+        <strong>${data.stats.pages} páginas HTML</strong> generadas en el servidor.<br><br>
+        Cuando estés listo, usa <em>Publicar para GoDaddy</em> para descargarlo como ZIP.`;
+      closeBtn.style.display = 'inline-block';
+    }
+  } catch(e) {
+    spinner.style.display  = 'none';
+    iconEl.style.display   = 'block';
+    iconEl.textContent     = '❌';
+    titleEl.textContent    = 'Error al exportar';
+    msgEl.textContent      = e.message;
+    closeBtn.style.display = 'inline-block';
+  } finally {
+    document.getElementById('saveBtn').disabled    = false;
+    document.getElementById('publishBtn').disabled = false;
+  }
 }
 </script>
 <div class="adm-stats">

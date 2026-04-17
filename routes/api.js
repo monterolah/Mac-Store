@@ -1,928 +1,496 @@
+'use strict';
 const express  = require('express');
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const multer   = require('multer');
 const path     = require('path');
 const fs       = require('fs');
-const { getFirestore } = require('../db/firebase');
-const { uploadToStorage } = require('../utils/storageUpload');
-const { requireAdminAPI } = require('../middleware/auth');
-const { importCatalogFromWorkbook, importInventoryWorkbook } = require('../utils/catalogImport');
-const { thinkRamiro } = require('../ramiro/services/ramiroBrain');
-const { readUrlContent, extractProductsFromUrl } = require('../ramiro/services/ramiroUrlReader');
-const { syncProductsFromArray } = require('../ramiro/services/ramiroCatalogTools');
-const { learnPattern } = require('../ramiro/services/ramiroMemory');
-
 const PDFDocument = require('pdfkit');
 
-const router = express.Router();
-const { clearCache } = require('../utils/cache');
+const { uploadToStorage }    = require('../utils/storageUpload');
+const { requireAdminAPI }    = require('../middleware/auth');
+const { clearCache }         = require('../utils/cache');
+const { importCatalogFromWorkbook, importInventoryWorkbook } = require('../utils/catalogImport');
+const { exportSite, createZip } = require('../utils/staticExport');
 
-// Invalidar caché automáticamente tras cualquier cambio de administrador
+const {
+  getSettings, setSettings,
+  getAllProducts, getProductById, getProductBySlug, insertProduct, updateProduct, deleteProduct,
+  getAllCategories, insertCategory, updateCategory, deleteCategory,
+  getAllBanners, insertBanner, updateBanner, deleteBanner,
+  getAllAnnouncements, insertAnnouncement, updateAnnouncement, deleteAnnouncement,
+  getAllPaymentMethods, insertPaymentMethod, updatePaymentMethod, deletePaymentMethod,
+  getAllQuotations, getQuotationById, insertQuotation, deleteQuotation,
+  getAllInventoryEntries, getInventoryEntryById, updateInventoryEntry,
+  getAdminByEmail, getPageDesign, savePageDesign, clearPageDesignHtml,
+  dbGet,
+} = require('../db/sqlite');
+
+const ejs  = require('ejs');
+const ppath = require('path');
+
+const router = express.Router();
+
+// ── Invalidar caché tras cambios de administrador ─────────────────────────
 router.use((req, res, next) => {
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+  if (['POST','PUT','DELETE','PATCH'].includes(req.method)) {
     res.on('finish', () => {
-      if (res.statusCode >= 200 && res.statusCode < 400 && !req.originalUrl.includes('/auth/login') && !req.originalUrl.includes('/upload')) {
+      if (res.statusCode >= 200 && res.statusCode < 400 &&
+          !req.originalUrl.includes('/auth/login') &&
+          !req.originalUrl.includes('/upload') &&
+          !req.originalUrl.includes('/editor/')) {
         clearCache();
+        clearPageDesignHtml();
       }
     });
   }
   next();
 });
 
-
-// ── MULTER CONFIG — memoria para subir a Firebase Storage ─────────────────
+// ── MULTER ────────────────────────────────────────────────────────────────
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024, files: 1 }, // 25 MB
-  fileFilter: (req, file, cb) => {
+  limits: { fileSize: 25 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
     if (!file || !file.originalname) return cb(new Error('Archivo inválido'));
-    const isValid = file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/');
-    return isValid ? cb(null, true) : cb(new Error('Solo imágenes y videos permitidos'));
+    const ok = file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/');
+    ok ? cb(null, true) : cb(new Error('Solo imágenes y videos'));
   }
 });
 
-const excelStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../temp_uploads');
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.xlsx';
-    cb(null, `catalog-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  }
-});
 const excelUpload = multer({
-  storage: excelStorage,
+  storage: multer.diskStorage({
+    destination: (_req, _f, cb) => { const d = path.join(__dirname,'../temp_uploads'); fs.mkdirSync(d,{recursive:true}); cb(null,d); },
+    filename: (_req, file, cb) => { cb(null, `catalog-${Date.now()}${path.extname(file.originalname)||'.xlsx'}`); }
+  }),
   limits: { fileSize: 12 * 1024 * 1024, files: 1 },
-  fileFilter: (req, file, cb) => {
-    const ok = /sheet|excel|spreadsheetml|csv/i.test(file.mimetype) || /\.(xlsx|xls|csv)$/i.test(file.originalname || '');
-    ok ? cb(null, true) : cb(new Error('Solo archivos Excel o CSV'));
+  fileFilter: (_req, file, cb) => {
+    const ok = /sheet|excel|spreadsheetml|csv/i.test(file.mimetype) || /\.(xlsx|xls|csv)$/i.test(file.originalname||'');
+    ok ? cb(null,true) : cb(new Error('Solo Excel o CSV'));
   }
 });
 
+// ── Helpers ───────────────────────────────────────────────────────────────
 function slugify(str) {
   return String(str).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 }
-
-function docToObj(doc) {
-  return { id: doc.id, ...doc.data() };
-}
-
-
-function badRequest(res, message) {
-  return res.status(400).json({ error: message });
-}
-
-function parseJsonField(value, fallback) {
-  if (value === undefined || value === null || value === '') return fallback;
-  if (typeof value === 'object') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    throw new Error('JSON inválido en uno de los campos enviados');
-  }
-}
-
-function toBool(value, fallback = false) {
-  if (value === undefined || value === null || value === '') return fallback;
-  if (typeof value === 'boolean') return value;
-  return value === '1' || value === 'true' || value === 'on';
-}
-
-function toNumber(value, fallback = 0) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function cleanText(value, max = 5000) {
-  return String(value || '').trim().slice(0, max);
-}
-
+function badRequest(res, msg)  { return res.status(400).json({ error: msg }); }
+function parseJsonField(v, fb) { if (v===undefined||v===null||v==='') return fb; if (typeof v==='object') return v; try { return JSON.parse(v); } catch { throw new Error('JSON inválido'); } }
+function toBool(v, fb=false)   { if (v===undefined||v===null||v==='') return fb; if (typeof v==='boolean') return v; return v==='1'||v==='true'||v==='on'; }
+function toNumber(v, fb=0)     { const n=Number(v); return Number.isFinite(n)?n:fb; }
+function cleanText(v, max=5000){ return String(v||'').trim().slice(0,max); }
 
 // ══════════════════════════════════════════════════════════════════════════
-// PDF NATIVO CON PDFKIT — SIN PUPPETEER
+// PDF NATIVO CON PDFKIT
 // ══════════════════════════════════════════════════════════════════════════
-
-const C = {
-  black:    '#1d1d1f',
-  white:    '#ffffff',
-  grey:     '#515154',
-  lightG:   '#86868b',
-  bg:       '#f5f5f7',
-  border:   '#e8e8ed',
-  blue:     '#0071e3',
-  blueBg:   '#f5f5f7',
-  green:    '#1a7f37',
-  greenBg:  '#f0f0f0',
-  accent:   '#1d1d1f',
-  rowAlt:   '#fafafa',
-};
+const C = { black:'#1d1d1f',white:'#ffffff',grey:'#515154',lightG:'#86868b',bg:'#f5f5f7',border:'#e8e8ed',blue:'#0071e3',blueBg:'#f5f5f7',green:'#1a7f37',greenBg:'#f0f0f0',accent:'#1d1d1f',rowAlt:'#fafafa' };
 
 function parseBase64Image(b64) {
   if (!b64) return null;
-  try {
-    const match = b64.match(/^data:(image\/\w+);base64,(.+)$/);
-    if (!match) return null;
-    return Buffer.from(match[2], 'base64');
-  } catch { return null; }
+  try { const m=b64.match(/^data:(image\/\w+);base64,(.+)$/); return m ? Buffer.from(m[2],'base64') : null; } catch { return null; }
 }
 
 function buildPdfBuffer(q) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({
-        size: 'A4',
-        margins: { top: 40, bottom: 40, left: 44, right: 44 }
-      });
-
-      const chunks = [];
-      doc.on('data', c => chunks.push(c));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      const W = doc.page.width - 88;
-      const LM = 44;
-      let y = 40;
-
-      const drawLine = (x1, yL, x2, color, width) => {
-        doc.strokeColor(color || C.black).lineWidth(width || 1).moveTo(x1, yL).lineTo(x2, yL).stroke();
-      };
-
-      const drawRect = (x, yR, w, h, fill) => {
-        doc.rect(x, yR, w, h).fill(fill);
-      };
-
-      const checkPage = (needed) => {
-        if (y + needed > doc.page.height - 50) {
-          doc.addPage();
-          y = 40;
-        }
-      };
-
-      // ── DATOS ──
-      const items    = Array.isArray(q.items) ? q.items : [];
-      const ivaMode  = q.ivaMode || 'con';
-      const options  = q.options || {};
-      const settings = q.settings || {};
-      const payMethods = Array.isArray(q.paymentMethods) ? q.paymentMethods : [];
-
-      const storeName    = settings.store_name || 'MacStore';
-      const storeTagline = settings.store_tagline || 'Distribuidor Autorizado Apple';
-
-      const createdAt = new Date();
-      const dateStr   = createdAt.toLocaleDateString('es-SV', { year: 'numeric', month: 'long', day: 'numeric' });
-      const validText = q.validity === '0' ? 'Sin vencimiento' : `Válida por ${q.validity || 7} días`;
-
-      // ── HEADER ──
-      doc.font('Helvetica-Bold').fontSize(26).fillColor(C.black).text(storeName, LM, y);
-      y += 30;
-      doc.font('Helvetica').fontSize(10).fillColor(C.lightG).text(storeTagline, LM, y);
-      y += 18;
-      drawLine(LM, y, LM + W, C.black, 2);
-      y += 16;
-
-      // ── META: CLIENTE + INFO en 2 columnas ──
-      const metaW = (W - 14) / 2;
-      const infoX = LM + metaW + 14;
-      const metaH = 68;
-
-      // Card cliente
-      doc.save();
-      doc.roundedRect(LM, y, metaW, metaH, 6).fill(C.bg);
-      doc.restore();
-      doc.font('Helvetica-Bold').fontSize(7).fillColor(C.lightG).text('COTIZACIÓN PARA', LM + 14, y + 12);
-      doc.font('Helvetica-Bold').fontSize(15).fillColor(C.black).text(q.client || '—', LM + 14, y + 26, { width: metaW - 28 });
-      if (q.company) {
-        doc.font('Helvetica').fontSize(10).fillColor(C.grey).text(q.company, LM + 14, y + 44, { width: metaW - 28 });
-      }
-
-      // Card info
-      doc.save();
-      doc.roundedRect(infoX, y, metaW, metaH, 6).fill(C.bg);
-      doc.restore();
-      doc.font('Helvetica-Bold').fontSize(7).fillColor(C.lightG).text('INFORMACIÓN', infoX + 14, y + 12);
-      doc.font('Helvetica-Bold').fontSize(15).fillColor(C.black).text(q.qNum || '', infoX + 14, y + 26, { width: metaW - 28 });
-      doc.font('Helvetica').fontSize(9).fillColor(C.grey).text(`Emitida: ${dateStr}`, infoX + 14, y + 44);
-      doc.font('Helvetica').fontSize(9).fillColor(C.grey).text(validText, infoX + 14, y + 56);
-
-      y += metaH + 12;
-
-      // Vendedor badge — gris neutro
-      if (q.seller) {
-        checkPage(24);
-        const badgeLabel = `Vendedor: ${q.seller}`;
-        doc.font('Helvetica-Bold').fontSize(9);
-        const bw = doc.widthOfString(badgeLabel) + 20;
-        doc.save();
-        doc.roundedRect(infoX + 14, y, bw, 18, 9).fill(C.bg);
-        doc.restore();
-        doc.font('Helvetica-Bold').fontSize(9).fillColor(C.grey).text(badgeLabel, infoX + 24, y + 4);
-        y += 26;
-      }
-
-      y += 8;
-
-      // ── TABLA DE PRODUCTOS ──
-      checkPage(40);
-
-      const colX  = [LM, LM + W * 0.55, LM + W * 0.7, LM + W * 0.85];
-      const colW  = [W * 0.55, W * 0.15, W * 0.15, W * 0.15];
-      const ivaHeader = ivaMode === 'con' ? 'Precio c/IVA' : 'Precio s/IVA';
-
-      // Header tabla con bordes redondeados
-      doc.save();
-      doc.roundedRect(LM, y, W, 28, 6).fill(C.black);
-      doc.restore();
+      const doc = new PDFDocument({ size:'A4', margins:{top:40,bottom:40,left:44,right:44} });
+      const chunks = []; doc.on('data',c=>chunks.push(c)); doc.on('end',()=>resolve(Buffer.concat(chunks))); doc.on('error',reject);
+      const W=doc.page.width-88, LM=44; let y=40;
+      const drawLine=(x1,yL,x2,color,width)=>doc.strokeColor(color||C.black).lineWidth(width||1).moveTo(x1,yL).lineTo(x2,yL).stroke();
+      const drawRect=(x,yR,w,h,fill)=>doc.rect(x,yR,w,h).fill(fill);
+      const checkPage=(needed)=>{ if(y+needed>doc.page.height-50){doc.addPage();y=40;} };
+      const items=Array.isArray(q.items)?q.items:[], ivaMode=q.ivaMode||'con', options=q.options||{}, settings=q.settings||{}, payMethods=Array.isArray(q.paymentMethods)?q.paymentMethods:[];
+      const storeName=settings.store_name||'MacStore', storeTagline=settings.store_tagline||'Distribuidor Autorizado Apple';
+      const dateStr=new Date().toLocaleDateString('es-SV',{year:'numeric',month:'long',day:'numeric'});
+      const validText=q.validity==='0'?'Sin vencimiento':`Válida por ${q.validity||7} días`;
+      doc.font('Helvetica-Bold').fontSize(26).fillColor(C.black).text(storeName,LM,y); y+=30;
+      doc.font('Helvetica').fontSize(10).fillColor(C.lightG).text(storeTagline,LM,y); y+=18;
+      drawLine(LM,y,LM+W,C.black,2); y+=16;
+      const metaW=(W-14)/2, infoX=LM+metaW+14, metaH=68;
+      doc.save(); doc.roundedRect(LM,y,metaW,metaH,6).fill(C.bg); doc.restore();
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(C.lightG).text('COTIZACIÓN PARA',LM+14,y+12);
+      doc.font('Helvetica-Bold').fontSize(15).fillColor(C.black).text(q.client||'—',LM+14,y+26,{width:metaW-28});
+      if(q.company) doc.font('Helvetica').fontSize(10).fillColor(C.grey).text(q.company,LM+14,y+44,{width:metaW-28});
+      doc.save(); doc.roundedRect(infoX,y,metaW,metaH,6).fill(C.bg); doc.restore();
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(C.lightG).text('INFORMACIÓN',infoX+14,y+12);
+      doc.font('Helvetica-Bold').fontSize(15).fillColor(C.black).text(q.qNum||'',infoX+14,y+26,{width:metaW-28});
+      doc.font('Helvetica').fontSize(9).fillColor(C.grey).text(`Emitida: ${dateStr}`,infoX+14,y+44);
+      doc.font('Helvetica').fontSize(9).fillColor(C.grey).text(validText,infoX+14,y+56);
+      y+=metaH+12;
+      if(q.seller){ checkPage(24); const bl=`Vendedor: ${q.seller}`; doc.font('Helvetica-Bold').fontSize(9); const bw=doc.widthOfString(bl)+20; doc.save(); doc.roundedRect(infoX+14,y,bw,18,9).fill(C.bg); doc.restore(); doc.font('Helvetica-Bold').fontSize(9).fillColor(C.grey).text(bl,infoX+24,y+4); y+=26; }
+      y+=8; checkPage(40);
+      const colX=[LM,LM+W*0.55,LM+W*0.7,LM+W*0.85], colW=[W*0.55,W*0.15,W*0.15,W*0.15];
+      const ivaHeader=ivaMode==='con'?'Precio c/IVA':'Precio s/IVA';
+      doc.save(); doc.roundedRect(LM,y,W,28,6).fill(C.black); doc.restore();
       doc.font('Helvetica-Bold').fontSize(8).fillColor(C.white);
-      doc.text('PRODUCTO', colX[0] + 12, y + 9);
-      doc.text('CANT.', colX[1], y + 9, { width: colW[1], align: 'center' });
-      doc.text(ivaHeader.toUpperCase(), colX[2], y + 9, { width: colW[2], align: 'right' });
-      doc.text('TOTAL', colX[3], y + 9, { width: colW[3], align: 'right' });
-      y += 28;
-
-      // Filas de productos
-      items.forEach((item, idx) => {
-        const price = parseFloat(item.price) || 0;
-        const qty   = parseInt(item.qty) || 1;
-        const disc  = parseFloat(item.discount) || 0;
-        const gross = price * qty;
-        const discAmt = gross * (disc / 100);
-        const net   = gross - discAmt;
-
-        let unitShow, lineTotal;
-        if (ivaMode === 'exento' || ivaMode === 'desglosado') {
-          unitShow  = price / 1.13;
-          lineTotal = net / 1.13;
-        } else {
-          unitShow  = price;
-          lineTotal = net;
-        }
-
-        const hasSpecs = options.showSpecs && item.specs && typeof item.specs === 'object' && Object.keys(item.specs).length > 0;
-        const hasFicha = options.showFichaGlobal && item.ficha && typeof item.ficha === 'object' && Object.keys(item.ficha).length > 0;
-        const specEntries = hasSpecs ? Object.entries(item.specs).filter(([k, v]) => v !== null && v !== undefined && String(v).trim() !== '') : [];
-        const fichaEntries = hasFicha ? Object.entries(item.ficha).filter(([k, v]) => v !== null && v !== undefined && String(v).trim() !== '') : [];
-        const colors = Array.isArray(item.selectedColors) ? item.selectedColors.filter(Boolean) : [];
-
-        let rowH = 28;
-        if (specEntries.length)  rowH += specEntries.length * 14 + 8;
-        if (fichaEntries.length) rowH += fichaEntries.length * 22 + 14;
-        if (disc > 0)   rowH += 14;
-        if (colors.length) rowH += 16;
-        rowH = Math.max(rowH, 50);
-
-        const imgBuf = parseBase64Image(item.image_base64);
-        if (imgBuf) rowH = Math.max(rowH, 70);
-
-        checkPage(rowH + 4);
-
-        // Fila alternada sutil
-        if (idx % 2 === 0) {
-          doc.save();
-          doc.rect(LM, y, W, rowH).fill(C.rowAlt);
-          doc.restore();
-        }
-        if (idx > 0) {
-          drawLine(LM, y, LM + W, C.border, 0.4);
-        }
-        y += 6;
-
-        const rowStartY = y;
-        let contentX = colX[0] + 12;
-
-        // Imagen del producto
-        if (imgBuf) {
-          try {
-            doc.image(imgBuf, contentX, y, { width: 50, height: 50, fit: [50, 50] });
-          } catch (e) { /* imagen inválida */ }
-          contentX += 60;
-        }
-
-        // Nombre + variante
-        const nameText = item.variant ? `${item.name || ''} — ${item.variant}` : (item.name || '');
+      doc.text('PRODUCTO',colX[0]+12,y+9); doc.text('CANT.',colX[1],y+9,{width:colW[1],align:'center'}); doc.text(ivaHeader.toUpperCase(),colX[2],y+9,{width:colW[2],align:'right'}); doc.text('TOTAL',colX[3],y+9,{width:colW[3],align:'right'}); y+=28;
+      items.forEach((item,idx)=>{
+        const price=parseFloat(item.price)||0, qty=parseInt(item.qty)||1, disc=parseFloat(item.discount)||0;
+        const gross=price*qty, discAmt=gross*(disc/100), net=gross-discAmt;
+        let unitShow,lineTotal;
+        if(ivaMode==='exento'||ivaMode==='desglosado'){unitShow=price/1.13;lineTotal=net/1.13;}else{unitShow=price;lineTotal=net;}
+        const hasSpecs=options.showSpecs&&item.specs&&typeof item.specs==='object'&&Object.keys(item.specs).length>0;
+        const hasFicha=options.showFichaGlobal&&item.ficha&&typeof item.ficha==='object'&&Object.keys(item.ficha).length>0;
+        const specEntries=hasSpecs?Object.entries(item.specs).filter(([,v])=>v!=null&&String(v).trim()!==''):[];
+        const fichaEntries=hasFicha?Object.entries(item.ficha).filter(([,v])=>v!=null&&String(v).trim()!==''):[];
+        const colors=Array.isArray(item.selectedColors)?item.selectedColors.filter(Boolean):[];
+        let rowH=28; if(specEntries.length)rowH+=specEntries.length*14+8; if(fichaEntries.length)rowH+=fichaEntries.length*22+14; if(disc>0)rowH+=14; if(colors.length)rowH+=16; rowH=Math.max(rowH,50);
+        const imgBuf=parseBase64Image(item.image_base64); if(imgBuf)rowH=Math.max(rowH,70);
+        checkPage(rowH+4);
+        if(idx%2===0){doc.save();doc.rect(LM,y,W,rowH).fill(C.rowAlt);doc.restore();}
+        if(idx>0)drawLine(LM,y,LM+W,C.border,0.4);
+        y+=6; const rowStartY=y; let contentX=colX[0]+12;
+        if(imgBuf){try{doc.image(imgBuf,contentX,y,{width:50,height:50,fit:[50,50]});}catch(e){}contentX+=60;}
+        const nameText=item.variant?`${item.name||''} — ${item.variant}`:(item.name||'');
         doc.font('Helvetica-Bold').fontSize(11).fillColor(C.black);
-        const nameW = colW[0] - (contentX - colX[0]) - 8;
-        doc.text(nameText, contentX, y, { width: nameW });
-        y += doc.heightOfString(nameText, { width: nameW }) + 4;
-
-        // Colores
-        if (colors.length) {
-          doc.font('Helvetica').fontSize(8).fillColor(C.grey);
-          doc.text(`Colores: ${colors.join(', ')}`, contentX, y, { width: nameW });
-          y += 12;
-        }
-
-        // Specs (tabla corta)
-        if (specEntries.length) {
-          const specW = nameW;
-          specEntries.forEach(([k, v], si) => {
-            if (si % 2 === 0) drawRect(contentX, y - 1, specW, 13, '#f9f9f9');
-            doc.font('Helvetica-Bold').fontSize(8).fillColor(C.grey).text(k, contentX + 4, y + 1, { width: specW * 0.38 });
-            doc.font('Helvetica').fontSize(8).fillColor(C.black).text(String(v), contentX + specW * 0.4, y + 1, { width: specW * 0.58 });
-            y += 14;
-          });
-          y += 4;
-        }
-
-        // Ficha técnica completa
-        if (fichaEntries.length) {
-          const fichaW = nameW;
-          doc.font('Helvetica-Bold').fontSize(7).fillColor(C.lightG).text('FICHA TÉCNICA', contentX, y);
-          y += 10;
-          fichaEntries.forEach(([k, v], fi) => {
-            const valStr = String(v);
-            const valH = doc.font('Helvetica').fontSize(8).heightOfString(valStr, { width: fichaW * 0.57 });
-            const rH = Math.max(valH, 10) + 8;
-            if (fi % 2 === 0) drawRect(contentX, y - 2, fichaW, rH + 2, '#f9f9f9');
-            doc.font('Helvetica-Bold').fontSize(8).fillColor(C.grey).text(String(k), contentX + 4, y + 3, { width: fichaW * 0.37 });
-            doc.font('Helvetica').fontSize(8).fillColor(C.black).text(valStr, contentX + fichaW * 0.4, y + 3, { width: fichaW * 0.57 });
-            y += rH + 2;
-          });
-          y += 6;
-        }
-
-        // Descuento
-        if (disc > 0) {
-          doc.font('Helvetica').fontSize(8).fillColor(C.green);
-          doc.text(`Descuento ${disc}% aplicado (−$${discAmt.toFixed(2)})`, contentX, y);
-          y += 14;
-        }
-
-        // Columnas numéricas
-        const numY = rowStartY + Math.max((y - rowStartY) / 2 - 6, 4);
-        doc.font('Helvetica').fontSize(11).fillColor(C.black);
-        doc.text(String(qty), colX[1], numY, { width: colW[1], align: 'center' });
-        doc.text(`$${unitShow.toFixed(2)}`, colX[2], numY, { width: colW[2], align: 'right' });
-        doc.font('Helvetica-Bold').fontSize(11).fillColor(C.black);
-        doc.text(`$${lineTotal.toFixed(2)}`, colX[3], numY, { width: colW[3], align: 'right' });
-
-        if (imgBuf) y = Math.max(y, rowStartY + 54);
-        y += 6;
+        const nameW=colW[0]-(contentX-colX[0])-8; doc.text(nameText,contentX,y,{width:nameW}); y+=doc.heightOfString(nameText,{width:nameW})+4;
+        if(colors.length){doc.font('Helvetica').fontSize(8).fillColor(C.grey).text(`Colores: ${colors.join(', ')}`,contentX,y,{width:nameW});y+=12;}
+        if(specEntries.length){const specW=nameW;specEntries.forEach(([k,v],si)=>{if(si%2===0)drawRect(contentX,y-1,specW,13,'#f9f9f9');doc.font('Helvetica-Bold').fontSize(8).fillColor(C.grey).text(k,contentX+4,y+1,{width:specW*0.38});doc.font('Helvetica').fontSize(8).fillColor(C.black).text(String(v),contentX+specW*0.4,y+1,{width:specW*0.58});y+=14;});y+=4;}
+        if(fichaEntries.length){const fichaW=nameW;doc.font('Helvetica-Bold').fontSize(7).fillColor(C.lightG).text('FICHA TÉCNICA',contentX,y);y+=10;fichaEntries.forEach(([k,v],fi)=>{const valStr=String(v),valH=doc.font('Helvetica').fontSize(8).heightOfString(valStr,{width:fichaW*0.57}),rH=Math.max(valH,10)+8;if(fi%2===0)drawRect(contentX,y-2,fichaW,rH+2,'#f9f9f9');doc.font('Helvetica-Bold').fontSize(8).fillColor(C.grey).text(String(k),contentX+4,y+3,{width:fichaW*0.37});doc.font('Helvetica').fontSize(8).fillColor(C.black).text(valStr,contentX+fichaW*0.4,y+3,{width:fichaW*0.57});y+=rH+2;});y+=6;}
+        if(disc>0){doc.font('Helvetica').fontSize(8).fillColor(C.green).text(`Descuento ${disc}% aplicado (−$${discAmt.toFixed(2)})`,contentX,y);y+=14;}
+        const numY=rowStartY+Math.max((y-rowStartY)/2-6,4);
+        doc.font('Helvetica').fontSize(11).fillColor(C.black).text(String(qty),colX[1],numY,{width:colW[1],align:'center'}).text(`$${unitShow.toFixed(2)}`,colX[2],numY,{width:colW[2],align:'right'});
+        doc.font('Helvetica-Bold').fontSize(11).fillColor(C.black).text(`$${lineTotal.toFixed(2)}`,colX[3],numY,{width:colW[3],align:'right'});
+        if(imgBuf)y=Math.max(y,rowStartY+54); y+=6;
       });
-
-      // ── TOTALES ──
-      y += 8;
-      checkPage(80);
-
-      let sub = 0, iva = 0;
-      items.forEach(item => {
-        const price = parseFloat(item.price) || 0;
-        const qty   = parseInt(item.qty) || 1;
-        const disc  = parseFloat(item.discount) || 0;
-        const gross = price * qty;
-        const discAmt = gross * (disc / 100);
-        const net   = gross - discAmt;
-
-        if (ivaMode === 'exento') {
-          sub += net / 1.13;
-        } else if (ivaMode === 'desglosado') {
-          const s = net / 1.13;
-          sub += s;
-          iva += net - s;
-        } else {
-          sub += net;
-        }
-      });
-      const total = sub + iva;
-
-      const totX = LM + W - 220;
-      const totW = 220;
-
-      if (ivaMode !== 'con') {
-        doc.font('Helvetica').fontSize(11).fillColor(C.grey);
-        doc.text('Subtotal sin IVA', totX, y, { width: totW * 0.55 });
-        doc.text(`$${sub.toFixed(2)}`, totX + totW * 0.55, y, { width: totW * 0.45, align: 'right' });
-        y += 18;
+      y+=8; checkPage(80);
+      let sub=0,iva=0;
+      items.forEach(item=>{ const price=parseFloat(item.price)||0,qty=parseInt(item.qty)||1,disc=parseFloat(item.discount)||0,gross=price*qty,discAmt=gross*(disc/100),net=gross-discAmt; if(ivaMode==='exento'){sub+=net/1.13;}else if(ivaMode==='desglosado'){const s=net/1.13;sub+=s;iva+=net-s;}else{sub+=net;} });
+      const total=sub+iva, totX=LM+W-220, totW=220;
+      if(ivaMode!=='con'){doc.font('Helvetica').fontSize(11).fillColor(C.grey).text('Subtotal sin IVA',totX,y,{width:totW*0.55}).text(`$${sub.toFixed(2)}`,totX+totW*0.55,y,{width:totW*0.45,align:'right'});y+=18;}
+      if(ivaMode==='desglosado'){doc.font('Helvetica').fontSize(11).fillColor(C.grey).text('IVA (13%)',totX,y,{width:totW*0.55}).text(`$${iva.toFixed(2)}`,totX+totW*0.55,y,{width:totW*0.45,align:'right'});y+=18;}
+      if(ivaMode==='exento'){doc.font('Helvetica').fontSize(11).fillColor(C.grey).text('IVA',totX,y,{width:totW*0.4});const exText='EXENTO';doc.font('Helvetica-Bold').fontSize(8);const exW=doc.widthOfString(exText)+14;doc.save();doc.roundedRect(totX+totW-exW,y-2,exW,16,5).fill(C.greenBg);doc.restore();doc.font('Helvetica-Bold').fontSize(8).fillColor(C.green).text(exText,totX+totW-exW+7,y+1);y+=18;}
+      drawLine(totX,y,totX+totW,C.black,1.5); y+=8;
+      doc.font('Helvetica-Bold').fontSize(18).fillColor(C.black).text('Total',totX,y,{width:totW*0.45}).text(`$${total.toFixed(2)}`,totX+totW*0.45,y,{width:totW*0.55,align:'right'}); y+=28;
+      if(options.showCuotasPDF){
+        checkPage(80); const div1=parseInt(q.div1)||6,div2=parseInt(q.div2)||10,lbl1=q.lbl1||'6 cuotas sin intereses',lbl2=q.lbl2||'10 cuotas sin intereses';
+        doc.font('Helvetica-Bold').fontSize(8).fillColor(C.lightG).text('OPCIONES DE FINANCIAMIENTO',LM,y); y+=14;
+        const cuotaW=(W-16)/2,cuotaH=64;
+        doc.save();doc.roundedRect(LM,y,cuotaW,cuotaH,8).lineWidth(1).strokeColor(C.border).stroke();doc.restore();
+        doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(lbl1,LM,y+10,{width:cuotaW,align:'center',lineBreak:false});
+        doc.font('Helvetica-Bold').fontSize(20).fillColor(C.black).text(`$${(total/div1).toFixed(2)}`,LM,y+24,{width:cuotaW,align:'center',lineBreak:false});
+        doc.font('Helvetica').fontSize(8).fillColor(C.lightG).text('por mes',LM,y+46,{width:cuotaW,align:'center',lineBreak:false});
+        const c2x=LM+cuotaW+14;
+        doc.save();doc.roundedRect(c2x,y,cuotaW,cuotaH,8).lineWidth(1).strokeColor(C.border).stroke();doc.restore();
+        doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(lbl2,c2x,y+10,{width:cuotaW,align:'center',lineBreak:false});
+        doc.font('Helvetica-Bold').fontSize(20).fillColor(C.black).text(`$${(total/div2).toFixed(2)}`,c2x,y+24,{width:cuotaW,align:'center',lineBreak:false});
+        doc.font('Helvetica').fontSize(8).fillColor(C.lightG).text('por mes',c2x,y+46,{width:cuotaW,align:'center',lineBreak:false});
+        y+=cuotaH+24;
       }
-
-      if (ivaMode === 'desglosado') {
-        doc.font('Helvetica').fontSize(11).fillColor(C.grey);
-        doc.text('IVA (13%)', totX, y, { width: totW * 0.55 });
-        doc.text(`$${iva.toFixed(2)}`, totX + totW * 0.55, y, { width: totW * 0.45, align: 'right' });
-        y += 18;
+      if(options.showPMs&&payMethods.length){
+        checkPage(60); doc.font('Helvetica-Bold').fontSize(9).fillColor(C.grey).text('MÉTODOS DE PAGO',LM,y); y+=14;
+        const pmPerRow=3,pmW=(W-(pmPerRow-1)*10)/pmPerRow,pmH=40; let pmRowY=y;
+        payMethods.forEach((pm,pi)=>{ const col=pi%pmPerRow; if(col===0&&pi>0){pmRowY+=pmH+8;checkPage(pmH+8);} const pmX=LM+col*(pmW+10); doc.save();doc.roundedRect(pmX,pmRowY,pmW,pmH,6).fill(C.bg);doc.restore(); const logoBuf=parseBase64Image(pm.logo_base64); let textX=pmX+10; if(logoBuf){try{doc.image(logoBuf,pmX+8,pmRowY+8,{height:24,fit:[40,24]});textX=pmX+52;}catch{}} doc.font('Helvetica-Bold').fontSize(9).fillColor(C.black).text(pm.name||'',textX,pmRowY+10,{width:pmW-(textX-pmX)-8}); if(pm.description)doc.font('Helvetica').fontSize(7).fillColor(C.lightG).text(pm.description,textX,pmRowY+24,{width:pmW-(textX-pmX)-8}); });
+        y=pmRowY+pmH+12;
       }
-
-      if (ivaMode === 'exento') {
-        doc.font('Helvetica').fontSize(11).fillColor(C.grey);
-        doc.text('IVA', totX, y, { width: totW * 0.4 });
-        const exText = 'EXENTO';
-        doc.font('Helvetica-Bold').fontSize(8);
-        const exW = doc.widthOfString(exText) + 14;
-        doc.save();
-        doc.roundedRect(totX + totW - exW, y - 2, exW, 16, 5).fill(C.greenBg);
-        doc.restore();
-        doc.font('Helvetica-Bold').fontSize(8).fillColor(C.green).text(exText, totX + totW - exW + 7, y + 1);
-        y += 18;
-      }
-
-      drawLine(totX, y, totX + totW, C.black, 1.5);
-      y += 8;
-      doc.font('Helvetica-Bold').fontSize(18).fillColor(C.black);
-      doc.text('Total', totX, y, { width: totW * 0.45 });
-      doc.text(`$${total.toFixed(2)}`, totX + totW * 0.45, y, { width: totW * 0.55, align: 'right' });
-      y += 28;
-
-      // ── CUOTAS ──
-      if (options.showCuotasPDF) {
-        checkPage(80);
-        const div1 = parseInt(q.div1) || 6;
-        const div2 = parseInt(q.div2) || 10;
-        const lbl1 = q.lbl1 || '6 cuotas sin intereses';
-        const lbl2 = q.lbl2 || '10 cuotas sin intereses';
-
-        doc.font('Helvetica-Bold').fontSize(8).fillColor(C.lightG).text('OPCIONES DE FINANCIAMIENTO', LM, y);
-        y += 14;
-
-        const cuotaW = (W - 16) / 2;
-        const cuotaH = 64;
-
-        // Cuota 1
-        doc.save();
-        doc.roundedRect(LM, y, cuotaW, cuotaH, 8).lineWidth(1).strokeColor(C.border).stroke();
-        doc.restore();
-        doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(lbl1, LM, y + 10, { width: cuotaW, align: 'center', lineBreak: false });
-        doc.font('Helvetica-Bold').fontSize(20).fillColor(C.black).text(`$${(total / div1).toFixed(2)}`, LM, y + 24, { width: cuotaW, align: 'center', lineBreak: false });
-        doc.font('Helvetica').fontSize(8).fillColor(C.lightG).text('por mes', LM, y + 46, { width: cuotaW, align: 'center', lineBreak: false });
-
-        // Cuota 2
-        const c2x = LM + cuotaW + 14;
-        doc.save();
-        doc.roundedRect(c2x, y, cuotaW, cuotaH, 8).lineWidth(1).strokeColor(C.border).stroke();
-        doc.restore();
-        doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(lbl2, c2x, y + 10, { width: cuotaW, align: 'center', lineBreak: false });
-        doc.font('Helvetica-Bold').fontSize(20).fillColor(C.black).text(`$${(total / div2).toFixed(2)}`, c2x, y + 24, { width: cuotaW, align: 'center', lineBreak: false });
-        doc.font('Helvetica').fontSize(8).fillColor(C.lightG).text('por mes', c2x, y + 46, { width: cuotaW, align: 'center', lineBreak: false });
-
-        y += cuotaH + 24;
-      }
-
-      // ── MÉTODOS DE PAGO ──
-      if (options.showPMs && payMethods.length) {
-        checkPage(60);
-        doc.font('Helvetica-Bold').fontSize(9).fillColor(C.grey).text('MÉTODOS DE PAGO', LM, y);
-        y += 14;
-
-        const pmPerRow = 3;
-        const pmW = (W - (pmPerRow - 1) * 10) / pmPerRow;
-        const pmH = 40;
-        let pmRowY = y;
-
-        payMethods.forEach((pm, pi) => {
-          const col = pi % pmPerRow;
-          if (col === 0 && pi > 0) {
-            pmRowY += pmH + 8;
-            checkPage(pmH + 8);
-          }
-
-          const pmX = LM + col * (pmW + 10);
-
-          doc.save();
-          doc.roundedRect(pmX, pmRowY, pmW, pmH, 6).fill(C.bg);
-          doc.restore();
-
-          const logoBuf = parseBase64Image(pm.logo_base64);
-          let textX = pmX + 10;
-          if (logoBuf) {
-            try {
-              doc.image(logoBuf, pmX + 8, pmRowY + 8, { height: 24, fit: [40, 24] });
-              textX = pmX + 52;
-            } catch { /* logo inválido */ }
-          }
-
-          doc.font('Helvetica-Bold').fontSize(9).fillColor(C.black).text(pm.name || '', textX, pmRowY + 10, { width: pmW - (textX - pmX) - 8 });
-          if (pm.description) {
-            doc.font('Helvetica').fontSize(7).fillColor(C.lightG).text(pm.description, textX, pmRowY + 24, { width: pmW - (textX - pmX) - 8 });
-          }
-        });
-
-        const totalRows = Math.ceil(payMethods.length / pmPerRow);
-        y = pmRowY + pmH + 12;
-      }
-
-      // ── NOTAS ──
-      if (q.notes) {
-        checkPage(50);
-        doc.font('Helvetica').fontSize(10);
-        const noteContent = `Notas: ${q.notes}`;
-        const notesH = doc.heightOfString(noteContent, { width: W - 28 }) + 20;
-        doc.save();
-        doc.roundedRect(LM, y, W, notesH, 6).fill(C.bg);
-        doc.restore();
-        doc.font('Helvetica-Bold').fontSize(10).fillColor(C.grey).text('Notas:', LM + 14, y + 8);
-        doc.font('Helvetica').fontSize(10).fillColor(C.grey).text(q.notes, LM + 56, y + 8, { width: W - 78, lineGap: 3 });
-        y += notesH + 8;
-      }
-
-      // ── NOTA AL PIE ──
-      const footNotes = q.footNotes || q.foot_notes || '';
-      if (footNotes) {
-        checkPage(40);
-        drawLine(LM, y, LM + W, C.border, 0.5);
-        y += 10;
-        doc.font('Helvetica').fontSize(9).fillColor(C.lightG);
-        doc.text(footNotes, LM, y, { width: W, lineGap: 4 });
-        y += doc.heightOfString(footNotes, { width: W }) + 10;
-      }
-
-      // ── FOOTER ──
-      checkPage(30);
-      drawLine(LM, y, LM + W, C.border, 0.5);
-      y += 10;
-      doc.font('Helvetica').fontSize(9).fillColor(C.lightG);
-      doc.text('• Precios en USD', LM, y);
-      y += 12;
-      if (options.showCuotasPDF) {
-        doc.text('• Cuotas con tarjetas participantes', LM, y);
-        y += 12;
-      }
-      doc.text(`• ${validText} a partir de emisión`, LM, y);
-
-      doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(q.qNum || '', LM + W - 120, y, { width: 120, align: 'right' });
-
+      if(q.notes){checkPage(50);const noteContent=`Notas: ${q.notes}`,notesH=doc.font('Helvetica').fontSize(10).heightOfString(noteContent,{width:W-28})+20;doc.save();doc.roundedRect(LM,y,W,notesH,6).fill(C.bg);doc.restore();doc.font('Helvetica-Bold').fontSize(10).fillColor(C.grey).text('Notas:',LM+14,y+8);doc.font('Helvetica').fontSize(10).fillColor(C.grey).text(q.notes,LM+56,y+8,{width:W-78,lineGap:3});y+=notesH+8;}
+      const footNotes=q.footNotes||q.foot_notes||'';
+      if(footNotes){checkPage(40);drawLine(LM,y,LM+W,C.border,0.5);y+=10;doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(footNotes,LM,y,{width:W,lineGap:4});y+=doc.heightOfString(footNotes,{width:W})+10;}
+      checkPage(30); drawLine(LM,y,LM+W,C.border,0.5); y+=10;
+      doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text('• Precios en USD',LM,y); y+=12;
+      if(options.showCuotasPDF){doc.text('• Cuotas con tarjetas participantes',LM,y);y+=12;}
+      doc.text(`• ${validText} a partir de emisión`,LM,y);
+      doc.font('Helvetica').fontSize(9).fillColor(C.lightG).text(q.qNum||'',LM+W-120,y,{width:120,align:'right'});
       doc.end();
-    } catch (err) {
-      reject(err);
-    }
+    } catch(err){ reject(err); }
   });
 }
 
-
-// ── AUTH ──────────────────────────────────────────────────────────────────────
-router.post('/auth/login', async (req, res) => {
+// ── AUTH ──────────────────────────────────────────────────────────────────
+router.post('/auth/login', (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email y contraseña requeridos' });
-    const db   = getFirestore();
-    const snap = await db.collection('admins').where('email','==',email).limit(1).get();
-    const admin = snap.empty ? null : snap.docs[0].data();
-    const valid = admin && bcrypt.compareSync(password, admin.password);
-    if (!valid) return res.status(401).json({ error: 'Credenciales incorrectas' });
-    const token = jwt.sign({ id: snap.docs[0].id, email: admin.email, name: admin.name }, process.env.JWT_SECRET, { expiresIn: '8h' });
+    if (!email || !password) return res.status(400).json({ error:'Email y contraseña requeridos' });
+    const admin = getAdminByEmail(email);
+    if (!admin || !bcrypt.compareSync(password, admin.password))
+      return res.status(401).json({ error:'Credenciales incorrectas' });
+    const token = jwt.sign({ id:admin.id, email:admin.email, name:admin.name }, process.env.JWT_SECRET, { expiresIn:'8h' });
     if (req.session) req.session.adminToken = token;
-    res.json({ token, admin: { email: admin.email, name: admin.name } });
-  } catch(e) { console.error('API login error:', e.message, e.stack); res.status(500).json({ error: 'Error al iniciar sesión', detail: process.env.NODE_ENV !== 'production' ? e.message : undefined }); }
+    res.json({ token, admin:{ email:admin.email, name:admin.name } });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.post('/auth/logout', (req, res) => { req.session.adminToken = null; res.json({ ok:true }); });
 
-// ── UPLOAD → Firebase Storage ─────────────────────────────────────────────────
+// ── UPLOAD ────────────────────────────────────────────────────────────────
 router.post('/upload', requireAdminAPI, upload.single('image'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No se recibió imagen' });
+  if (!req.file) return res.status(400).json({ error:'No se recibió imagen' });
   try {
     const url = await uploadToStorage(req.file.buffer, req.file.originalname, 'uploads');
     res.json({ url });
-  } catch (err) {
-    console.error('Error subiendo imagen:', err);
-    res.status(500).json({ error: 'Error al subir imagen' });
-  }
+  } catch(e) { res.status(500).json({ error:'Error al subir imagen' }); }
 });
 
 router.post('/products/import', requireAdminAPI, excelUpload.single('catalogo'), async (req, res) => {
   let filePath = '';
   try {
-    if (!req.file) return res.status(400).json({ error: 'Debes subir un archivo Excel' });
+    if (!req.file) return res.status(400).json({ error:'Debes subir un archivo Excel' });
     filePath = req.file.path;
-    const hideMissing = String(req.body.hideMissing || '0') === '1';
-    const importKind = String(req.body.importKind || 'catalog').toLowerCase();
-    const result = importKind === 'inventory'
-      ? await importInventoryWorkbook(filePath, { sourceFileName: req.file.originalname })
-      : await importCatalogFromWorkbook(filePath, { hideMissing, sourceFileName: req.file.originalname });
+    const hideMissing = String(req.body.hideMissing||'0')==='1';
+    const importKind  = String(req.body.importKind||'catalog').toLowerCase();
+    const result = importKind==='inventory'
+      ? await importInventoryWorkbook(filePath,{sourceFileName:req.file.originalname})
+      : await importCatalogFromWorkbook(filePath,{hideMissing,sourceFileName:req.file.originalname});
     res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  } finally {
-    if (filePath && fs.existsSync(filePath)) {
-      try { fs.unlinkSync(filePath); } catch (_) {}
-    }
-  }
+  } catch(e) { res.status(500).json({ error:e.message }); }
+  finally { if(filePath&&fs.existsSync(filePath)) try{fs.unlinkSync(filePath);}catch{} }
 });
 
-// ── PRODUCTS ──────────────────────────────────────────────────────────────────
-router.get('/products', async (req, res) => {
+// ── PRODUCTS ──────────────────────────────────────────────────────────────
+router.get('/products', (req, res) => {
   try {
-    const db = getFirestore();
-    let query = db.collection('products').orderBy('sort_order','asc');
-    const snap = await query.get();
-    let prods  = snap.docs.map(docToObj);
+    let prods = getAllProducts();
     if (req.query.category) prods = prods.filter(p => p.category === req.query.category);
     if (req.query.featured)  prods = prods.filter(p => p.featured);
     if (!req.query.all)      prods = prods.filter(p => p.active !== false);
     res.json(prods);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.get('/products/:id', async (req, res) => {
+router.get('/products/:id', (req, res) => {
   try {
-    const db = getFirestore();
-    let doc = await db.collection('products').doc(req.params.id).get();
-    if (!doc.exists) {
-      const snap = await db.collection('products').where('slug','==',req.params.id).limit(1).get();
-      if (snap.empty) return res.status(404).json({ error:'No encontrado' });
-      doc = snap.docs[0];
-    }
-    res.json(docToObj(doc));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    let product = getProductById(req.params.id);
+    if (!product) product = getProductBySlug(req.params.id);
+    if (!product) return res.status(404).json({ error:'No encontrado' });
+    res.json(product);
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.post('/products', requireAdminAPI, upload.single('image'), async (req, res) => {
   try {
-    const db = getFirestore();
-    const name = cleanText(req.body.name, 160);
-    const description = cleanText(req.body.description, 5000);
-    const category = cleanText(req.body.category || 'accesorios', 80);
+    const name  = cleanText(req.body.name, 160);
     const price = toNumber(req.body.price, NaN);
-    if (!name || !Number.isFinite(price) || price <= 0) {
-      return badRequest(res, 'Nombre y precio válidos son requeridos');
-    }
+    if (!name || !Number.isFinite(price) || price <= 0) return badRequest(res, 'Nombre y precio válidos son requeridos');
 
     let image_url = cleanText(req.body.image_url, 2000);
     if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'products');
 
     const payload = {
-      name,
-      slug: slugify(name),
-      description,
-      price,
-      original_price: req.body.original_price !== undefined && req.body.original_price !== '' ? toNumber(req.body.original_price, null) : null,
-      category,
-      badge: cleanText(req.body.badge, 120) || null,
-      featured: toBool(req.body.featured, false),
-      active: req.body.active !== '0',
-      stock: Math.max(0, parseInt(req.body.stock, 10) || 0),
-      sort_order: Math.max(0, parseInt(req.body.sort_order, 10) || 0),
-      enable_installments: req.body.enable_installments !== undefined ? req.body.enable_installments !== '0' : true,
-      image_url,
-      img_fit: cleanText(req.body.img_fit || 'contain', 30),
-      img_pos: cleanText(req.body.img_pos || 'center', 30),
-      img_scale: Math.max(0.2, Math.min(3, toNumber(req.body.img_scale, 1))),
-      detail_img_scale: Math.max(0.2, Math.min(3, toNumber(req.body.detail_img_scale, toNumber(req.body.img_scale, 1)))),
-      color_variants: parseJsonField(req.body.color_variants, []),
-      variants: parseJsonField(req.body.variants, []),
-      logos: parseJsonField(req.body.logos, []),
-      ficha_tecnica: cleanText(req.body.ficha_tecnica, 12000),
-      ficha: parseJsonField(req.body.ficha, {}),
-      createdAt: new Date()
+      name, slug: slugify(name),
+      description: cleanText(req.body.description, 5000),
+      price, original_price: req.body.original_price!==undefined&&req.body.original_price!==''?toNumber(req.body.original_price,null):null,
+      category: cleanText(req.body.category||'accesorios',80),
+      badge: cleanText(req.body.badge,120)||null,
+      featured: toBool(req.body.featured,false) ? 1 : 0,
+      active: req.body.active!=='0' ? 1 : 0,
+      stock: Math.max(0,parseInt(req.body.stock,10)||0),
+      sort_order: Math.max(0,parseInt(req.body.sort_order,10)||0),
+      enable_installments: req.body.enable_installments!==undefined ? (req.body.enable_installments!=='0'?1:0) : 1,
+      image_url, img_fit: cleanText(req.body.img_fit||'contain',30), img_pos: cleanText(req.body.img_pos||'center',30),
+      img_scale: Math.max(0.2,Math.min(3,toNumber(req.body.img_scale,1))),
+      detail_img_scale: Math.max(0.2,Math.min(3,toNumber(req.body.detail_img_scale,toNumber(req.body.img_scale,1)))),
+      color_variants: parseJsonField(req.body.color_variants,[]),
+      variants: parseJsonField(req.body.variants,[]),
+      logos: parseJsonField(req.body.logos,[]),
+      ficha_tecnica: cleanText(req.body.ficha_tecnica,12000),
+      ficha: parseJsonField(req.body.ficha,{}),
     };
 
-    const ref = await db.collection('products').add(payload);
-    res.status(201).json({ id: ref.id, slug: payload.slug });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    const ref = insertProduct(payload);
+    res.status(201).json({ id:ref.id, slug:payload.slug });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.put('/products/:id', requireAdminAPI, upload.single('image'), async (req, res) => {
   try {
-    const db  = getFirestore();
-    const ref = db.collection('products').doc(req.params.id);
-    const doc = await ref.get();
-    if (!doc.exists) return res.status(404).json({ error:'No encontrado' });
-    const ex  = doc.data();
+    const ex = getProductById(req.params.id);
+    if (!ex) return res.status(404).json({ error:'No encontrado' });
 
-    let image_url = req.body.image_url !== undefined ? cleanText(req.body.image_url, 2000) : ex.image_url;
+    let image_url = req.body.image_url!==undefined ? cleanText(req.body.image_url,2000) : ex.image_url;
     if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'products');
 
-    const name = cleanText(req.body.name, 160) || ex.name;
+    const name = cleanText(req.body.name,160)||ex.name;
     const payload = {
-      name,
-      slug: slugify(name),
-      description: req.body.description !== undefined ? cleanText(req.body.description, 5000) : (ex.description || ''),
-      price: req.body.price !== undefined && req.body.price !== '' ? toNumber(req.body.price, ex.price) : ex.price,
-      original_price: req.body.original_price !== undefined ? (req.body.original_price === '' ? null : toNumber(req.body.original_price, ex.original_price || null)) : (ex.original_price || null),
-      category: req.body.category !== undefined ? cleanText(req.body.category, 80) : ex.category,
-      badge: req.body.badge !== undefined ? (cleanText(req.body.badge, 120) || null) : (ex.badge || null),
-      featured: req.body.featured !== undefined ? toBool(req.body.featured, false) : !!ex.featured,
-      active: req.body.active !== undefined ? req.body.active !== '0' : ex.active,
-      stock: req.body.stock !== undefined ? Math.max(0, parseInt(req.body.stock, 10) || 0) : (ex.stock || 0),
-      sort_order: req.body.sort_order !== undefined ? Math.max(0, parseInt(req.body.sort_order, 10) || 0) : (ex.sort_order || 0),
+      name, slug: slugify(name),
+      description: req.body.description!==undefined?cleanText(req.body.description,5000):(ex.description||''),
+      price: req.body.price!==undefined&&req.body.price!==''?toNumber(req.body.price,ex.price):ex.price,
+      original_price: req.body.original_price!==undefined?(req.body.original_price===''?null:toNumber(req.body.original_price,ex.original_price||null)):(ex.original_price||null),
+      category: req.body.category!==undefined?cleanText(req.body.category,80):ex.category,
+      badge: req.body.badge!==undefined?(cleanText(req.body.badge,120)||null):(ex.badge||null),
+      featured: req.body.featured!==undefined?(toBool(req.body.featured,false)?1:0):(ex.featured?1:0),
+      active: req.body.active!==undefined?(req.body.active!=='0'?1:0):(ex.active?1:0),
+      stock: req.body.stock!==undefined?Math.max(0,parseInt(req.body.stock,10)||0):(ex.stock||0),
+      sort_order: req.body.sort_order!==undefined?Math.max(0,parseInt(req.body.sort_order,10)||0):(ex.sort_order||0),
       image_url,
-      img_fit: req.body.img_fit !== undefined ? cleanText(req.body.img_fit, 30) : (ex.img_fit || 'contain'),
-      img_pos: req.body.img_pos !== undefined ? cleanText(req.body.img_pos, 30) : (ex.img_pos || 'center'),
-      img_scale: req.body.img_scale !== undefined ? Math.max(0.2, Math.min(3, toNumber(req.body.img_scale, ex.img_scale || 1))) : (ex.img_scale || 1),
-      detail_img_scale: req.body.detail_img_scale !== undefined
-        ? Math.max(0.2, Math.min(3, toNumber(req.body.detail_img_scale, ex.detail_img_scale || ex.img_scale || 1)))
-        : (ex.detail_img_scale || ex.img_scale || 1),
-      color_variants: req.body.color_variants !== undefined ? parseJsonField(req.body.color_variants, []) : (ex.color_variants || []),
-      variants: req.body.variants !== undefined ? parseJsonField(req.body.variants, []) : (ex.variants || []),
-      logos: req.body.logos !== undefined ? parseJsonField(req.body.logos, []) : (ex.logos || []),
-      specs: req.body.specs !== undefined ? parseJsonField(req.body.specs, {}) : (ex.specs || {}),
-      ficha_tecnica: req.body.ficha_tecnica !== undefined ? cleanText(req.body.ficha_tecnica, 12000) : (ex.ficha_tecnica || ''),
-      ficha: req.body.ficha !== undefined ? parseJsonField(req.body.ficha, {}) : (ex.ficha || {}),
-      updatedAt: new Date()
+      img_fit: req.body.img_fit!==undefined?cleanText(req.body.img_fit,30):(ex.img_fit||'contain'),
+      img_pos: req.body.img_pos!==undefined?cleanText(req.body.img_pos,30):(ex.img_pos||'center'),
+      img_scale: req.body.img_scale!==undefined?Math.max(0.2,Math.min(3,toNumber(req.body.img_scale,ex.img_scale||1))):(ex.img_scale||1),
+      detail_img_scale: req.body.detail_img_scale!==undefined?Math.max(0.2,Math.min(3,toNumber(req.body.detail_img_scale,ex.detail_img_scale||1))):(ex.detail_img_scale||1),
+      color_variants: req.body.color_variants!==undefined?parseJsonField(req.body.color_variants,[]):(ex.color_variants||[]),
+      variants: req.body.variants!==undefined?parseJsonField(req.body.variants,[]):(ex.variants||[]),
+      logos: req.body.logos!==undefined?parseJsonField(req.body.logos,[]):(ex.logos||[]),
+      specs: req.body.specs!==undefined?parseJsonField(req.body.specs,{}):(ex.specs||{}),
+      ficha_tecnica: req.body.ficha_tecnica!==undefined?cleanText(req.body.ficha_tecnica,12000):(ex.ficha_tecnica||''),
+      ficha: req.body.ficha!==undefined?parseJsonField(req.body.ficha,{}):(ex.ficha||{}),
     };
 
-    await ref.update(payload);
-    res.json({ ok:true, slug: payload.slug });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+    updateProduct(req.params.id, payload);
+    res.json({ ok:true, slug:payload.slug });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.delete('/products/:id', requireAdminAPI, async (req, res) => {
-  try {
-    await getFirestore().collection('products').doc(req.params.id).delete();
-    res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+router.delete('/products/:id', requireAdminAPI, (req, res) => {
+  try { deleteProduct(req.params.id); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.post('/products/bulk-delete', requireAdminAPI, async (req, res) => {
+router.post('/products/bulk-delete', requireAdminAPI, (req, res) => {
   try {
     const ids = Array.isArray(req.body.ids) ? req.body.ids.filter(Boolean) : [];
-    if (!ids.length) return res.status(400).json({ error: 'No se recibieron productos para eliminar' });
-    const db = getFirestore();
-    await Promise.all(ids.map(id => db.collection('products').doc(id).delete()));
-    res.json({ ok:true, affected: ids.length });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    if (!ids.length) return res.status(400).json({ error:'No se recibieron productos para eliminar' });
+    ids.forEach(id => deleteProduct(id));
+    res.json({ ok:true, affected:ids.length });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.get('/inventory-entries', requireAdminAPI, async (req, res) => {
-  try {
-    const snap = await getFirestore().collection('inventory_entries').orderBy('createdAt','desc').limit(100).get();
-    res.json(snap.docs.map(docToObj));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+// ── INVENTORY ENTRIES ─────────────────────────────────────────────────────
+router.get('/inventory-entries', requireAdminAPI, (req, res) => {
+  try { res.json(getAllInventoryEntries(100)); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.post('/inventory-entries/:id/cancel', requireAdminAPI, async (req, res) => {
+router.post('/inventory-entries/:id/cancel', (req, res) => {
   try {
-    const db = getFirestore();
-    const ref = db.collection('inventory_entries').doc(req.params.id);
-    const doc = await ref.get();
-    if (!doc.exists) return res.status(404).json({ error:'Ingreso no encontrado' });
-    const entry = { id: doc.id, ...doc.data() };
-    if (entry.status === 'cancelled') return res.status(400).json({ error:'Este ingreso ya fue anulado' });
+    const entry = getInventoryEntryById(req.params.id);
+    if (!entry) return res.status(404).json({ error:'Ingreso no encontrado' });
+    if (entry.status==='cancelled') return res.status(400).json({ error:'Este ingreso ya fue anulado' });
 
     const items = Array.isArray(entry.items) ? entry.items : [];
     for (const item of items) {
       if (!item.productId) continue;
-      const productRef = db.collection('products').doc(item.productId);
-      const productDoc = await productRef.get();
-      if (!productDoc.exists) continue;
+      const p = getProductById(item.productId);
+      if (!p) continue;
       const restoreStock = Math.max(0, Number(item.previousStock ?? 0));
-      const payload = {
+      updateProduct(item.productId, {
         stock: restoreStock,
-        active: item.createdProduct ? false : (item.previousActive !== false),
-        updatedAt: new Date(),
-        last_entry_cancelled_at: new Date()
-      };
-      await productRef.set(payload, { merge:true });
+        active: item.createdProduct ? 0 : (item.previousActive!==false ? 1 : 0),
+        last_entry_cancelled_at: new Date().toISOString(),
+      });
     }
 
-    await ref.set({ status:'cancelled', cancelledAt:new Date(), updatedAt:new Date() }, { merge:true });
-    res.json({ ok:true, reverted: items.length });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    updateInventoryEntry(req.params.id, { status:'cancelled', cancelledAt:new Date().toISOString() });
+    res.json({ ok:true, reverted:items.length });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-// ── CATEGORIES ────────────────────────────────────────────────────────────────
-router.get('/categories', async (req, res) => {
-  try {
-    const snap = await getFirestore().collection('categories').where('active','==',true).orderBy('sort_order','asc').get();
-    res.json(snap.docs.map(docToObj));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+// ── CATEGORIES ────────────────────────────────────────────────────────────
+router.get('/categories', (req, res) => {
+  try { res.json(getAllCategories({ active:true })); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.post('/categories', requireAdminAPI, async (req, res) => {
+router.post('/categories', requireAdminAPI, upload.single('image'), async (req, res) => {
   try {
     const { name, description, sort_order, bg_color } = req.body;
     if (!name) return res.status(400).json({ error:'Nombre requerido' });
-    const ref = await getFirestore().collection('categories').add({ name, slug:slugify(name), description:description||'', sort_order:parseInt(sort_order)||0, bg_color:bg_color||'', active:true, createdAt:new Date() });
-    res.status(201).json({ id: ref.id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    let image_url = req.body.image_url || '';
+    if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'categories');
+    const ref = insertCategory({ name, slug:slugify(name), description:description||'', sort_order:parseInt(sort_order)||0, bg_color:bg_color||'', image_url });
+    res.status(201).json({ id:ref.id });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.put('/categories/:id', requireAdminAPI, upload.single('image'), async (req, res) => {
   try {
-    const db  = getFirestore();
-    const ref = db.collection('categories').doc(req.params.id);
-    const doc = await ref.get();
-    if (!doc.exists) return res.status(404).json({ error:'No encontrado' });
-    const ex  = doc.data();
+    const ex = dbGet('SELECT * FROM categories WHERE id = ?', [req.params.id]);
+    if (!ex) return res.status(404).json({ error:'No encontrado' });
     const { name, description, sort_order, active, bg_color, share_whatsapp } = req.body;
-    let image_url = req.body.image_url !== undefined ? req.body.image_url : ex.image_url;
-    if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'products');
-    await ref.update({
-      name: name || ex.name,
-      description: description || '',
-      image_url: image_url || '',
-      sort_order: parseInt(sort_order) || 0,
-      bg_color: bg_color || ex.bg_color || '',
-      share_whatsapp: share_whatsapp !== undefined ? share_whatsapp !== '0' : (ex.share_whatsapp !== false),
-      active: active !== undefined ? active !== '0' : ex.active
+    let image_url = ex.image_url; // default: keep existing image
+    if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'categories');
+    else if (req.body.image_url && req.body.image_url.trim()) image_url = req.body.image_url.trim();
+    updateCategory(req.params.id, {
+      name: name||ex.name, description:description||'', image_url:image_url||ex.image_url||'',
+      sort_order: parseInt(sort_order)||0, bg_color:bg_color||ex.bg_color||'',
+      share_whatsapp: share_whatsapp!==undefined?(share_whatsapp!=='0'?1:0):(ex.share_whatsapp?1:0),
+      active: active!==undefined?(active!=='0'?1:0):(ex.active?1:0),
     });
     res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.delete('/categories/:id', requireAdminAPI, async (req, res) => {
-  try {
-    await getFirestore().collection('categories').doc(req.params.id).delete();
-    res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+router.delete('/categories/:id', requireAdminAPI, (req, res) => {
+  try { deleteCategory(req.params.id); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-// ── BANNERS ───────────────────────────────────────────────────────────────────
-router.get('/banners', async (req, res) => {
+// ── BANNERS ───────────────────────────────────────────────────────────────
+router.get('/banners', (req, res) => {
   try {
-    const snap = await getFirestore().collection('banners').orderBy('sort_order','asc').get();
-    const all  = snap.docs.map(docToObj);
-    res.json(req.query.all ? all : all.filter(b => b.active !== false));
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    const all = getAllBanners();
+    res.json(req.query.all ? all : all.filter(b => b.active!==false));
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.post('/banners', requireAdminAPI, upload.single('image'), async (req, res) => {
   try {
     const { title, subtitle, cta_text, cta_url, bg_color, text_color, sort_order } = req.body;
-    let image_url = req.body.image_url || '';
+    let image_url = req.body.image_url||'';
     if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'products');
-    const ref = await getFirestore().collection('banners').add({ title:title||'', subtitle:subtitle||'', cta_text:cta_text||'', cta_url:cta_url||'all', image_url, bg_color:bg_color||'#1d1d1f', text_color:text_color||'#ffffff', sort_order:parseInt(sort_order)||0, active:true, createdAt:new Date() });
-    res.status(201).json({ id: ref.id });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+    const ref = insertBanner({ title:title||'', subtitle:subtitle||'', cta_text:cta_text||'', cta_url:cta_url||'', image_url, bg_color:bg_color||'#1d1d1f', text_color:text_color||'#ffffff', sort_order:parseInt(sort_order)||0 });
+    res.status(201).json({ id:ref.id });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.put('/banners/:id', requireAdminAPI, upload.single('image'), async (req, res) => {
   try {
-    const db  = getFirestore();
-    const ref = db.collection('banners').doc(req.params.id);
-    const doc = await ref.get();
-    if (!doc.exists) return res.status(404).json({ error:'No encontrado' });
-    const ex = doc.data();
+    const ex = dbGet('SELECT * FROM banners WHERE id = ?', [req.params.id]);
+    if (!ex) return res.status(404).json({ error:'No encontrado' });
     const { title, subtitle, cta_text, cta_url, bg_color, text_color, active, sort_order } = req.body;
-    let image_url = req.body.image_url || ex.image_url;
+    let image_url = req.body.image_url||ex.image_url;
     if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'products');
-    await ref.update({ title:title||ex.title||'', subtitle:subtitle||ex.subtitle||'', cta_text:cta_text||ex.cta_text||'', cta_url:cta_url||ex.cta_url||'', image_url:image_url||ex.image_url||'', bg_color:bg_color||ex.bg_color||'#1d1d1f', text_color:text_color||ex.text_color||'#ffffff', active:active!==undefined?active==='1':ex.active, sort_order:parseInt(sort_order)||0, updatedAt:new Date() });
+    updateBanner(req.params.id, { title:title||ex.title||'', subtitle:subtitle||ex.subtitle||'', cta_text:cta_text||ex.cta_text||'', cta_url:cta_url||ex.cta_url||'', image_url:image_url||'', bg_color:bg_color||ex.bg_color||'#1d1d1f', text_color:text_color||ex.text_color||'#ffffff', active:active!==undefined?(active==='1'?1:0):(ex.active?1:0), sort_order:parseInt(sort_order)||0 });
     res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.delete('/banners/:id', requireAdminAPI, async (req, res) => {
+router.delete('/banners/:id', requireAdminAPI, (req, res) => {
+  try { deleteBanner(req.params.id); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
+});
+
+// ── SETTINGS ──────────────────────────────────────────────────────────────
+router.get('/settings', (req, res) => {
+  try { res.json(getSettings()); } catch(e) { res.status(500).json({ error:e.message }); }
+});
+
+router.put('/settings/sellers', requireAdminAPI, (req, res) => {
   try {
-    await getFirestore().collection('banners').doc(req.params.id).delete();
+    const sellers       = Array.isArray(req.body.sellers) ? req.body.sellers : [];
+    const cuota_logos   = Array.isArray(req.body.cuota_logos) ? req.body.cuota_logos : [];
+    const cuotas_active = req.body.cuotas_active!==undefined ? !!req.body.cuotas_active : true;
+    setSettings({ sellers, cuota_logos, cuotas_active });
     res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── SETTINGS ──────────────────────────────────────────────────────────────────
-router.put('/settings/sellers', requireAdminAPI, async (req, res) => {
-  try {
-    const sellers = Array.isArray(req.body.sellers) ? req.body.sellers : [];
-    const cuota_logos = Array.isArray(req.body.cuota_logos) ? req.body.cuota_logos : [];
-    const cuotas_active = req.body.cuotas_active !== undefined ? !!req.body.cuotas_active : true;
-    await getFirestore().collection('settings').doc('main').set({ sellers, cuota_logos, cuotas_active }, { merge:true });
-    res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-router.get('/settings', async (req, res) => {
-  try {
-    const doc = await getFirestore().collection('settings').doc('main').get();
-    res.json(doc.exists ? doc.data() : {});
-  } catch(e) { res.status(500).json({ error: e.message }); }
-});
-
-// ── SITE VERSION (auto-refresh) ───────────────────────────────────────────
-router.get('/site-version', async (_req, res) => {
-  try {
-    const doc = await getFirestore().collection('settings').doc('main').get();
-    const v = doc.exists ? (doc.data().site_version || 1) : 1;
-    res.json({ version: v });
-  } catch(e) { res.json({ version: 1 }); }
-});
-
-router.post('/site-version/bump', requireAdminAPI, async (_req, res) => {
-  try {
-    const v = Date.now();
-    await getFirestore().collection('settings').doc('main').set({ site_version: v }, { merge: true });
-    res.json({ ok: true, version: v });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.put('/settings', requireAdminAPI, upload.single('logo'), async (req, res) => {
   try {
     const updates = { ...req.body };
     if (req.file) updates.logo_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'logos');
-    if (updates.promo_bar_active !== undefined) updates.promo_bar_active = updates.promo_bar_active === '1';
-    if (updates.auth_section_active !== undefined) updates.auth_section_active = updates.auth_section_active === '1';
-    if (updates.auth_hero_badge_active !== undefined) updates.auth_hero_badge_active = updates.auth_hero_badge_active === '1';
-    if (updates.support_section_active !== undefined) updates.support_section_active = updates.support_section_active === '1';
-    if (updates.show_ramiro !== undefined) updates.show_ramiro = updates.show_ramiro === '1';
-    if (updates.ramiro_show_source !== undefined) updates.ramiro_show_source = updates.ramiro_show_source === '1';
-    if (updates.show_admin_icon !== undefined) updates.show_admin_icon = updates.show_admin_icon === '1';
-    if (updates.support_cards) try { updates.support_cards = JSON.parse(updates.support_cards); } catch { delete updates.support_cards; }
-    if (updates.footer_cols)   try { updates.footer_cols   = JSON.parse(updates.footer_cols);   } catch { delete updates.footer_cols; }
+    if (updates.promo_bar_active!==undefined)      updates.promo_bar_active      = updates.promo_bar_active==='1';
+    if (updates.auth_section_active!==undefined)   updates.auth_section_active   = updates.auth_section_active==='1';
+    if (updates.auth_hero_badge_active!==undefined) updates.auth_hero_badge_active = updates.auth_hero_badge_active==='1';
+    if (updates.support_section_active!==undefined) updates.support_section_active = updates.support_section_active==='1';
+    if (updates.show_ramiro!==undefined)           updates.show_ramiro           = updates.show_ramiro==='1';
+    if (updates.ramiro_show_source!==undefined)    updates.ramiro_show_source    = updates.ramiro_show_source==='1';
+    if (updates.show_admin_icon!==undefined)       updates.show_admin_icon       = updates.show_admin_icon==='1';
+    if (updates.support_cards) try{updates.support_cards=JSON.parse(updates.support_cards);}catch{delete updates.support_cards;}
+    if (updates.footer_cols)   try{updates.footer_cols=JSON.parse(updates.footer_cols);}catch{delete updates.footer_cols;}
     delete updates.sellers;
-    await getFirestore().collection('settings').doc('main').set(updates, { merge:true });
+    setSettings(updates);
     res.json({ ok:true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-// ── ANNOUNCEMENTS ─────────────────────────────────────────────────────────────
-router.get('/announcements', async (req, res) => {
+router.get('/site-version', (req, res) => {
+  try { const s=getSettings(); res.json({ version:s.site_version||1 }); } catch{ res.json({ version:1 }); }
+});
+
+router.post('/site-version/bump', requireAdminAPI, (req, res) => {
+  try { const v=Date.now(); setSettings({ site_version:v }); res.json({ ok:true, version:v }); } catch(e){ res.status(500).json({ error:e.message }); }
+});
+
+// ── ANNOUNCEMENTS ─────────────────────────────────────────────────────────
+router.get('/announcements', (req, res) => {
   try {
-    const snap = await getFirestore().collection('announcements').get();
-    const all  = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+    const all = getAllAnnouncements();
     res.json(req.query.all ? all : all.filter(a=>a.active!==false));
-  } catch(e) { res.status(500).json({error:e.message}); }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.post('/announcements', requireAdminAPI, upload.single('image'), async (req, res) => {
@@ -930,268 +498,238 @@ router.post('/announcements', requireAdminAPI, upload.single('image'), async (re
     const { title, link, sort_order, logo_height } = req.body;
     let image_url = req.body.image_url||'';
     if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'banners');
-    const ref = await getFirestore().collection('announcements').add({ title:title||'', link:link||'', image_url, sort_order:parseInt(sort_order)||0, logo_height:parseInt(logo_height)||64, active:true, createdAt:new Date() });
-    res.status(201).json({id:ref.id});
-  } catch(e) { res.status(500).json({error:e.message}); }
+    const ref = insertAnnouncement({ title:title||'', link:link||'', image_url, sort_order:parseInt(sort_order)||0, logo_height:parseInt(logo_height)||64 });
+    res.status(201).json({ id:ref.id });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.put('/announcements/:id', requireAdminAPI, upload.single('image'), async (req, res) => {
   try {
-    const db=getFirestore(); const ref=db.collection('announcements').doc(req.params.id);
-    const doc=await ref.get(); if(!doc.exists) return res.status(404).json({error:'No encontrado'});
-    const ex=doc.data();
+    const ex = dbGet('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
+    if (!ex) return res.status(404).json({ error:'No encontrado' });
     const { title, link, sort_order, logo_height } = req.body;
     let image_url = req.body.image_url!==undefined ? req.body.image_url : ex.image_url;
     if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'announcements');
-    await ref.update({ title:title||ex.title||'', link:link||'', image_url:image_url||'', sort_order:parseInt(sort_order)||0, logo_height:parseInt(logo_height)||64, updatedAt:new Date() });
-    res.json({ok:true});
-  } catch(e) { res.status(500).json({error:e.message}); }
+    updateAnnouncement(req.params.id, { title:title||ex.title||'', link:link||'', image_url:image_url||'', sort_order:parseInt(sort_order)||0, logo_height:parseInt(logo_height)||64 });
+    res.json({ ok:true });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.post('/announcements/:id/toggle', requireAdminAPI, async (req, res) => {
+router.post('/announcements/:id/toggle', requireAdminAPI, (req, res) => {
   try {
-    const ref=getFirestore().collection('announcements').doc(req.params.id);
-    const doc=await ref.get(); if(!doc.exists) return res.status(404).json({error:'No encontrado'});
-    await ref.update({active:doc.data().active===false});
-    res.json({ok:true});
-  } catch(e) { res.status(500).json({error:e.message}); }
+    const ex = dbGet('SELECT active FROM announcements WHERE id = ?', [req.params.id]);
+    if (!ex) return res.status(404).json({ error:'No encontrado' });
+    updateAnnouncement(req.params.id, { active: ex.active===0 ? 1 : 0 });
+    res.json({ ok:true });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.delete('/announcements/:id', requireAdminAPI, async (req, res) => {
-  try {
-    await getFirestore().collection('announcements').doc(req.params.id).delete();
-    res.json({ok:true});
-  } catch(e) { res.status(500).json({error:e.message}); }
+router.delete('/announcements/:id', requireAdminAPI, (req, res) => {
+  try { deleteAnnouncement(req.params.id); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 // ── PAYMENT METHODS ───────────────────────────────────────────────────────
-router.get('/payment-methods', async (req, res) => {
-  try {
-    const snap = await getFirestore().collection('payment_methods').orderBy('sort_order','asc').get();
-    res.json(snap.docs.map(d=>({id:d.id,...d.data()})));
-  } catch(e) { res.status(500).json({error:e.message}); }
+router.get('/payment-methods', (req, res) => {
+  try { res.json(getAllPaymentMethods()); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.post('/payment-methods', requireAdminAPI, upload.single('logo'), async (req, res) => {
   try {
-    const {name,description,sort_order} = req.body;
-    if(!name) return res.status(400).json({error:'Nombre requerido'});
+    const { name, description, sort_order } = req.body;
+    if (!name) return res.status(400).json({ error:'Nombre requerido' });
     let logo_url = req.body.logo_url||'';
     if (req.file) logo_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'logos');
-    const ref = await getFirestore().collection('payment_methods').add({
-      name, description:description||'', logo_url, sort_order:parseInt(sort_order)||0,
-      active:true, createdAt:new Date()
-    });
-    res.status(201).json({id:ref.id});
-  } catch(e) { res.status(500).json({error:e.message}); }
+    const ref = insertPaymentMethod({ name, description:description||'', logo_url, sort_order:parseInt(sort_order)||0 });
+    res.status(201).json({ id:ref.id });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.put('/payment-methods/:id', requireAdminAPI, upload.single('logo'), async (req, res) => {
   try {
-    const ref = getFirestore().collection('payment_methods').doc(req.params.id);
-    const doc = await ref.get(); if(!doc.exists) return res.status(404).json({error:'No encontrado'});
-    const ex  = doc.data();
-    const {name,description,sort_order,active} = req.body;
+    const ex = dbGet('SELECT * FROM payment_methods WHERE id = ?', [req.params.id]);
+    if (!ex) return res.status(404).json({ error:'No encontrado' });
+    const { name, description, sort_order, active } = req.body;
     let logo_url = req.body.logo_url!==undefined ? req.body.logo_url : ex.logo_url;
     if (req.file) logo_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'logos');
-    await ref.update({name:name||ex.name,description:description||'',logo_url,sort_order:parseInt(sort_order)||0,active:active!=='0'});
-    res.json({ok:true});
-  } catch(e) { res.status(500).json({error:e.message}); }
+    updatePaymentMethod(req.params.id, { name:name||ex.name, description:description||'', logo_url, sort_order:parseInt(sort_order)||0, active:active!=='0'?1:0 });
+    res.json({ ok:true });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.delete('/payment-methods/:id', requireAdminAPI, async (req, res) => {
-  try {
-    await getFirestore().collection('payment_methods').doc(req.params.id).delete();
-    res.json({ok:true});
-  } catch(e) { res.status(500).json({error:e.message}); }
+router.delete('/payment-methods/:id', requireAdminAPI, (req, res) => {
+  try { deletePaymentMethod(req.params.id); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-// ── QUOTATIONS HISTORY ────────────────────────────────────────────────────
-router.get('/quotations', requireAdminAPI, async (req, res) => {
+// ── QUOTATIONS ────────────────────────────────────────────────────────────
+router.get('/quotations', requireAdminAPI, (req, res) => {
   try {
-    const snap = await getFirestore().collection('quotations').orderBy('createdAt','desc').limit(500).get();
-    let quotes = snap.docs.map(d=>({id:d.id,...d.data()}));
-    const {client,company,seller,product,from,to,ivaMode} = req.query;
-    if(client)  quotes=quotes.filter(q=>(q.client||'').toLowerCase().includes(client.toLowerCase()));
-    if(company) quotes=quotes.filter(q=>(q.company||'').toLowerCase().includes(company.toLowerCase()));
-    if(seller)  quotes=quotes.filter(q=>(q.seller||'').toLowerCase().includes(seller.toLowerCase()));
-    if(product) quotes=quotes.filter(q=>(q.items||[]).some(i=>(i.name||'').toLowerCase().includes(product.toLowerCase())));
-    if(ivaMode) quotes=quotes.filter(q=>q.ivaMode===ivaMode);
-    if(from){const d=new Date(from);quotes=quotes.filter(q=>q.createdAt?.toDate?.()>=d);}
-    if(to){const d=new Date(to);d.setHours(23,59,59);quotes=quotes.filter(q=>q.createdAt?.toDate?.()<=d);}
+    let quotes = getAllQuotations(500);
+    const { client, company, seller, product, from, to, ivaMode } = req.query;
+    if (client)  quotes = quotes.filter(q=>(q.client||'').toLowerCase().includes(client.toLowerCase()));
+    if (company) quotes = quotes.filter(q=>(q.company||'').toLowerCase().includes(company.toLowerCase()));
+    if (seller)  quotes = quotes.filter(q=>(q.seller||'').toLowerCase().includes(seller.toLowerCase()));
+    if (product) quotes = quotes.filter(q=>(q.items||[]).some(i=>(i.name||'').toLowerCase().includes(product.toLowerCase())));
+    if (ivaMode) quotes = quotes.filter(q=>q.ivaMode===ivaMode);
+    if (from) { const d=new Date(from); quotes=quotes.filter(q=>q.createdAt&&new Date(q.createdAt)>=d); }
+    if (to)   { const d=new Date(to); d.setHours(23,59,59); quotes=quotes.filter(q=>q.createdAt&&new Date(q.createdAt)<=d); }
     res.json(quotes);
-  } catch(e) { res.status(500).json({error:e.message}); }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.post('/quotations', requireAdminAPI, async (req, res) => {
+router.post('/quotations', requireAdminAPI, (req, res) => {
   try {
-    const {client,company,seller,notes,validity,ivaMode,items,total,lbl1,lbl2,div1,div2,qNum,client_phone,client_email,foot_notes} = req.body;
-    if(!client&&!company) return res.status(400).json({error:'Ingresa al menos cliente o empresa'});
-    const ref = await getFirestore().collection('quotations').add({
-      client:client||'', company:company||'', seller:seller||'', notes:notes||'',
-      validity:String(validity||'7'), ivaMode:ivaMode||'con',
-      items: Array.isArray(items) ? items : [],
-      total:parseFloat(total)||0,
-      lbl1:lbl1||'6 cuotas', lbl2:lbl2||'10 cuotas',
-      div1:parseInt(div1)||6, div2:parseInt(div2)||10,
-      qNum:qNum||'',
-      client_phone:client_phone||'',
-      client_email:client_email||'',
-      foot_notes:foot_notes||'',
-      createdAt:new Date()
-    });
-    res.status(201).json({id:ref.id});
-  } catch(e) { res.status(500).json({error:e.message}); }
+    const { client, company, seller, notes, validity, ivaMode, items, total, lbl1, lbl2, div1, div2, qNum, client_phone, client_email, foot_notes } = req.body;
+    if (!client&&!company) return res.status(400).json({ error:'Ingresa al menos cliente o empresa' });
+    const ref = insertQuotation({ client:client||'', company:company||'', seller:seller||'', notes:notes||'', validity:String(validity||'7'), ivaMode:ivaMode||'con', items:Array.isArray(items)?items:[], total:parseFloat(total)||0, lbl1:lbl1||'6 cuotas', lbl2:lbl2||'10 cuotas', div1:parseInt(div1)||6, div2:parseInt(div2)||10, qNum:qNum||'', client_phone:client_phone||'', client_email:client_email||'', foot_notes:foot_notes||'' });
+    res.status(201).json({ id:ref.id });
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-
-// ══════════════════════════════════════════════════════════════════════════
-// EXPORT PDF — PDF NATIVO CON PDFKIT
-// Guarda UNA sola vez en historial (eliminado el doble guardado del original)
-// ══════════════════════════════════════════════════════════════════════════
 router.post('/quotations/export-pdf', async (req, res) => {
-
   try {
-    const {
-      client, company, seller, notes, validity, ivaMode,
-      items, total, lbl1, lbl2, div1, div2, qNum,
-      client_phone, client_email, foot_notes, footNotes,
-      saveHistory, settings, options, paymentMethods
-    } = req.body;
+    const { client, company, seller, notes, validity, ivaMode, items, total, lbl1, lbl2, div1, div2, qNum, client_phone, client_email, foot_notes, footNotes, saveHistory, settings, options, paymentMethods } = req.body;
+    if (!client&&!company) return res.status(400).json({ error:'Ingresa al menos cliente o empresa' });
 
-    if (!client && !company) return res.status(400).json({ error: 'Ingresa al menos cliente o empresa' });
+    const quotation = { client:client||'', company:company||'', seller:seller||'', notes:notes||'', validity:String(validity||'7'), ivaMode:ivaMode||'con', items:Array.isArray(items)?items:[], total:parseFloat(total)||0, lbl1:lbl1||'6 cuotas sin intereses', lbl2:lbl2||'10 cuotas sin intereses', div1:parseInt(div1)||6, div2:parseInt(div2)||10, qNum:qNum||('COT-'+Date.now().toString().slice(-6)), client_phone:client_phone||'', client_email:client_email||'', foot_notes:foot_notes||'', footNotes:footNotes||foot_notes||'', settings:settings||{}, options:options||{}, paymentMethods:Array.isArray(paymentMethods)?paymentMethods:[], createdAt:new Date() };
 
-    const quotation = {
-      client: client || '',
-      company: company || '',
-      seller: seller || '',
-      notes: notes || '',
-      validity: String(validity || '7'),
-      ivaMode: ivaMode || 'con',
-      items: Array.isArray(items) ? items : [],
-      total: parseFloat(total) || 0,
-      lbl1: lbl1 || '6 cuotas sin intereses',
-      lbl2: lbl2 || '10 cuotas sin intereses',
-      div1: parseInt(div1) || 6,
-      div2: parseInt(div2) || 10,
-      qNum: qNum || ('COT-' + Date.now().toString().slice(-6)),
-      client_phone: client_phone || '',
-      client_email: client_email || '',
-      foot_notes: foot_notes || '',
-      footNotes: footNotes || foot_notes || '',
-      settings: settings || {},
-      options: options || {},
-      paymentMethods: Array.isArray(paymentMethods) ? paymentMethods : [],
-      createdAt: new Date()
-    };
-
-    // Guardar en historial UNA SOLA VEZ
-    if (saveHistory !== false) {
+    if (saveHistory!==false) {
       try {
-        await getFirestore().collection('quotations').add({
-          client: quotation.client,
-          company: quotation.company,
-          seller: quotation.seller,
-          notes: quotation.notes,
-          validity: quotation.validity,
-          ivaMode: quotation.ivaMode,
-          items: quotation.items.map(i => ({
-            name: i.name, price: i.price, qty: i.qty,
-            discount: i.discount || 0, variant: i.variant || '',
-            specs: i.specs || {}, image_url: i.image_url || ''
-          })),
-          total: quotation.total,
-          lbl1: quotation.lbl1, lbl2: quotation.lbl2,
-          div1: quotation.div1, div2: quotation.div2,
-          qNum: quotation.qNum,
-          client_phone: quotation.client_phone,
-          client_email: quotation.client_email,
-          foot_notes: quotation.footNotes,
-          createdAt: new Date()
-        });
-      } catch (e) {
-        console.warn('No se pudo guardar historial:', e.message);
-      }
+        insertQuotation({ client:quotation.client, company:quotation.company, seller:quotation.seller, notes:quotation.notes, validity:quotation.validity, ivaMode:quotation.ivaMode, items:quotation.items.map(i=>({name:i.name,price:i.price,qty:i.qty,discount:i.discount||0,variant:i.variant||'',specs:i.specs||{},image_url:i.image_url||''})), total:quotation.total, lbl1:quotation.lbl1, lbl2:quotation.lbl2, div1:quotation.div1, div2:quotation.div2, qNum:quotation.qNum, client_phone:quotation.client_phone, client_email:quotation.client_email, foot_notes:quotation.footNotes });
+      } catch(e) { console.warn('No se pudo guardar historial:', e.message); }
     }
 
     if (!quotation.footNotes) {
-      try {
-        const sDoc = await getFirestore().collection('settings').doc('main').get();
-        if (sDoc.exists && sDoc.data().pdf_foot_notes) quotation.footNotes = sDoc.data().pdf_foot_notes;
-      } catch(e) {}
+      try { const s=getSettings(); if(s.pdf_foot_notes) quotation.footNotes=s.pdf_foot_notes; } catch{}
     }
-    const pdfBuffer = await buildPdfBuffer(quotation);
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${quotation.qNum}.pdf"`);
+    const pdfBuffer = await buildPdfBuffer(quotation);
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition',`attachment; filename="${quotation.qNum}.pdf"`);
     res.send(pdfBuffer);
-  } catch (e) {
-    console.error('Error generando PDF:', e);
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { console.error('Error PDF:', e); res.status(500).json({ error:e.message }); }
 });
 
-// Regenerar PDF desde historial (admin)
 router.get('/quotations/:id/pdf', requireAdminAPI, async (req, res) => {
   try {
-    const doc = await getFirestore().collection('quotations').doc(req.params.id).get();
-    if (!doc.exists) return res.status(404).json({ error: 'Cotización no encontrada' });
-
-    const data = doc.data();
-    const quotation = {
-      ...data,
-      id: doc.id,
-      options: data.options || { showSpecs: true, showFichaGlobal: false, showCuotasPDF: true, showPMs: false },
-      settings: data.settings || {},
-      paymentMethods: data.paymentMethods || [],
-      footNotes: data.foot_notes || data.footNotes || ''
-    };
-
+    const data = getQuotationById(req.params.id);
+    if (!data) return res.status(404).json({ error:'Cotización no encontrada' });
+    const quotation = { ...data, options:data.options||{showSpecs:true,showFichaGlobal:false,showCuotasPDF:true,showPMs:false}, settings:data.settings||{}, paymentMethods:data.paymentMethods||[], footNotes:data.foot_notes||data.footNotes||'' };
     const pdfBuffer = await buildPdfBuffer(quotation);
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${quotation.qNum || 'cotizacion'}.pdf"`);
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition',`attachment; filename="${quotation.qNum||'cotizacion'}.pdf"`);
     res.send(pdfBuffer);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-router.delete('/quotations/:id', requireAdminAPI, async (req, res) => {
-  try {
-    await getFirestore().collection('quotations').doc(req.params.id).delete();
-    res.json({ok:true});
-  } catch(e) { res.status(500).json({error:e.message}); }
+router.delete('/quotations/:id', requireAdminAPI, (req, res) => {
+  try { deleteQuotation(req.params.id); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-// ── VENDEDORES (público) ──────────────────────────────────────────────────
-router.get('/sellers', async (req, res) => {
+// ── SELLERS ───────────────────────────────────────────────────────────────
+router.get('/sellers', (req, res) => {
   try {
-    const doc = await getFirestore().collection('settings').doc('main').get();
-    const data = doc.exists ? doc.data() : {};
-    const sellers = Array.isArray(data.sellers) ? data.sellers
-      : (typeof data.sellers === 'string' ? JSON.parse(data.sellers || '[]') : []);
+    const data = getSettings();
+    const sellers = Array.isArray(data.sellers) ? data.sellers : (typeof data.sellers==='string' ? JSON.parse(data.sellers||'[]') : []);
     res.json(sellers);
-  } catch(e) { res.status(500).json({error:e.message}); }
+  } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
-// ── CLIENTES PARA AUTOCOMPLETAR ───────────────────────────────────────────
-router.get('/clients-public', requireAdminAPI, async (req, res) => {
+// ── CLIENTS AUTOCOMPLETE ──────────────────────────────────────────────────
+router.get('/clients-public', requireAdminAPI, (req, res) => {
   try {
-    const snap = await getFirestore().collection('quotations')
-      .orderBy('createdAt','desc').limit(300).get();
-    const seen = new Map();
-    snap.docs.forEach(d=>{
-      const q = d.data();
+    const quotes = getAllQuotations(300);
+    const seen   = new Map();
+    quotes.forEach(q => {
       const key = (q.client||'').toLowerCase()+(q.company||'').toLowerCase();
-      if(key && !seen.has(key)) seen.set(key, {
-        client:  q.client||'',
-        company: q.company||'',
-        phone:   q.client_phone||''
-      });
+      if (key&&!seen.has(key)) seen.set(key,{ client:q.client||'', company:q.company||'', phone:q.client_phone||'' });
     });
     res.json([...seen.values()]);
-  } catch(e) { res.status(500).json({error:e.message}); }
+  } catch(e) { res.status(500).json({ error:e.message }); }
+});
+
+// ── EDITOR VISUAL ─────────────────────────────────────────────────────────
+const VIEWS_DIR = ppath.join(__dirname, '../views');
+
+async function renderPageForEditor(pageName) {
+  const settings      = getSettings() || {};
+  const categories    = getAllCategories({ active: true });
+  const announcements = getAllAnnouncements().filter(a => a.active !== false);
+  const fmtPrice      = p => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(p||0);
+  const fakeReq       = { session:{}, query:{} };
+  const opts          = { views:[VIEWS_DIR, ppath.join(VIEWS_DIR,'partials')] };
+
+  const base = { settings, categories, announcements, formatPrice: fmtPrice, req: fakeReq, vendorMode: false };
+
+  if (pageName === 'home') {
+    const banners  = getAllBanners({ active:true });
+    const allProds = getAllProducts().filter(p => p.active !== false);
+    const featured = allProds.slice(0, 12);
+    const products = allProds.slice(0, 24);
+    const saved    = getPageDesign('home');
+    const editorCss = (saved && saved.css) ? saved.css : '';
+    return ejs.renderFile(ppath.join(VIEWS_DIR,'home.ejs'), { ...base, banners, featured, products, editorCss, title: settings.store_name||'MacStore' }, opts);
+  }
+  if (pageName === 'catalog') {
+    const products = getAllProducts().filter(p => p.active !== false);
+    return ejs.renderFile(ppath.join(VIEWS_DIR,'catalog.ejs'), { ...base, products, title:'Catálogo' }, opts);
+  }
+  if (pageName === 'product') {
+    const product = getAllProducts().filter(p=>p.active!==false)[0] || { id:'0', name:'Producto de ejemplo', price:999, description:'Descripción del producto.', slug:'ejemplo', image_url:'', category:'mac', specs:{}, color_variants:[], variants:[] };
+    const related = getAllProducts().filter(p=>p.active!==false&&p.id!==product.id).slice(0,4);
+    return ejs.renderFile(ppath.join(VIEWS_DIR,'product.ejs'), { ...base, product, related, title: product.name }, opts);
+  }
+  if (pageName === 'category') {
+    // Mostrar la primera categoría con imagen si la tiene; si no, la primera disponible
+    const catWithImg = categories.find(c => c.image_url) || categories[0]
+                       || { id:'0', name:'Categoría', slug:'mac' };
+    const products = getAllProducts().filter(p=>p.active!==false&&p.category===catWithImg.slug).slice(0,24);
+    return ejs.renderFile(ppath.join(VIEWS_DIR,'category.ejs'), { ...base, category: catWithImg, products, title: catWithImg.name }, opts);
+  }
+  throw new Error('Página no válida: ' + pageName);
+}
+
+router.get('/editor/render', requireAdminAPI, async (req, res) => {
+  try {
+    const html = await renderPageForEditor(req.query.page || 'home');
+    res.send(html);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/editor/design', requireAdminAPI, (req, res) => {
+  try {
+    const d = getPageDesign(req.query.page || 'home');
+    res.json(d ? { html: d.html||'', css: d.css||'', gjsData: d.gjs_data||'{}', updatedAt: d.updatedAt } : null);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/editor/save', requireAdminAPI, (req, res) => {
+  try {
+    const { page, html, css, gjsData } = req.body;
+    if (!page) return res.status(400).json({ error:'Falta page' });
+    savePageDesign(page, html||'', css||'', gjsData||'{}');
+    clearCache();
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── EXPORTAR SITIO ESTÁTICO ───────────────────────────────────────────────
+router.post('/export', requireAdminAPI, async (req, res) => {
+  const mode = (req.query.mode||req.body.mode||'guardar').toLowerCase();
+  try {
+    const { outDir, stats } = await exportSite();
+    if (mode==='publicar') {
+      const zipPath = `${outDir}.zip`;
+      createZip(outDir, zipPath);
+      const zipName = `macstore-${stats.timestamp}.zip`;
+      res.setHeader('Content-Type','application/zip');
+      res.setHeader('Content-Disposition',`attachment; filename="${zipName}"`);
+      const stream = fs.createReadStream(zipPath);
+      stream.pipe(res);
+      stream.on('end', () => { try{fs.unlinkSync(zipPath);}catch{} });
+    } else {
+      res.json({ ok:true, message:'Sitio guardado correctamente', stats });
+    }
+  } catch(e) { console.error('[export]',e); res.status(500).json({ error:e.message }); }
 });
 
 module.exports = router;

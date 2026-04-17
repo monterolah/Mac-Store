@@ -1,241 +1,111 @@
 'use strict';
-
-const { getFirestore } = require('../../db/firebase');
+const {
+  getAllProducts, getProductById, insertProduct, updateProduct, deleteProduct: dbDeleteProduct,
+} = require('../../db/sqlite');
 
 function slugify(text) {
-  return String(text || '')
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+  return String(text||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
 }
 
-const ALLOWED_CATEGORIES = new Set(['mac', 'iphone', 'ipad', 'airpods']);
-const ALLOWED_UPDATE_FIELDS = ['price', 'original_price', 'active', 'description', 'variants', 'color_variants', 'stock', 'specs', 'badge', 'image_url'];
+const ALLOWED_CATEGORIES   = new Set(['mac','iphone','ipad','airpods']);
+const ALLOWED_UPDATE_FIELDS = ['price','original_price','active','description','variants','color_variants','stock','specs','badge','image_url'];
 
-/**
- * Busca productos aplicando filtros simples en memoria (después de un get() sin orderBy).
- */
 async function searchProducts(filters = {}) {
-  const db = getFirestore();
-  const snap = await db.collection('products').get();
-  let results = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-  if (typeof filters.active === 'boolean') {
-    results = results.filter(p => (p.active !== false) === filters.active);
-  }
-  if (typeof filters.hasImage === 'boolean') {
-    results = results.filter(p => {
-      const has = Boolean(p.image_url && String(p.image_url).trim());
-      return has === filters.hasImage;
-    });
-  }
-  if (filters.category) {
+  let results = getAllProducts();
+  if (typeof filters.active === 'boolean')
+    results = results.filter(p => (p.active !== false && p.active !== 0) === filters.active);
+  if (typeof filters.hasImage === 'boolean')
+    results = results.filter(p => Boolean(p.image_url && String(p.image_url).trim()) === filters.hasImage);
+  if (filters.category)
     results = results.filter(p => p.category === filters.category);
-  }
   if (filters.nameContains) {
     const q = String(filters.nameContains).toLowerCase();
-    results = results.filter(p => String(p.name || '').toLowerCase().includes(q));
+    results = results.filter(p => String(p.name||'').toLowerCase().includes(q));
   }
   return results.slice(0, 80);
 }
 
-/**
- * Crea un producto en Firestore.
- */
 async function createProduct(payload) {
-  const db = getFirestore();
-  const name = String(payload.name || '').trim();
+  const name = String(payload.name||'').trim();
   if (!name) throw new Error('Falta nombre del producto');
-
-  const category = ALLOWED_CATEGORIES.has(String(payload.category || '').toLowerCase())
-    ? String(payload.category).toLowerCase()
-    : 'mac';
-
-  const price = Number(payload.price);
-
+  const category = ALLOWED_CATEGORIES.has(String(payload.category||'').toLowerCase()) ? String(payload.category).toLowerCase() : 'mac';
+  const price    = Number(payload.price);
   const doc = {
-    name,
-    slug: payload.slug || slugify(name),
-    category,
+    name, slug: payload.slug || slugify(name), category,
     price: Number.isFinite(price) && price > 0 ? price : 1,
-    description: String(payload.description || `${name} disponible en MacStore.`).slice(0, 2000),
-    active: payload.active !== false,
-    stock: Number(payload.stock) || 0,
-    sort_order: Number(payload.sort_order) || 0,
-    image_url: String(payload.image_url || ''),
+    description: String(payload.description || `${name} disponible en MacStore.`).slice(0,2000),
+    active: payload.active !== false ? 1 : 0,
+    stock: Number(payload.stock) || 0, sort_order: Number(payload.sort_order) || 0,
+    image_url: String(payload.image_url||''),
     color_variants: Array.isArray(payload.color_variants) ? payload.color_variants : [],
     variants: Array.isArray(payload.variants) ? payload.variants : [],
-    specs: (payload.specs && typeof payload.specs === 'object') ? payload.specs : {},
-    badge: String(payload.badge || ''),
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    specs: (payload.specs && typeof payload.specs==='object') ? payload.specs : {},
+    badge: String(payload.badge||''),
   };
-
-  const ref = await db.collection('products').add(doc);
+  const ref = insertProduct(doc);
   return { id: ref.id, ...doc };
 }
 
-/**
- * Actualiza campos de un producto. Solo permite ALLOWED_UPDATE_FIELDS.
- */
-async function updateProduct(productId, updates = {}) {
+async function updateProductById(productId, updates = {}) {
   if (!productId) throw new Error('Falta productId');
-  const db = getFirestore();
+  const ex = getProductById(productId);
+  if (!ex) throw new Error('Producto no encontrado');
   const filtered = {};
   for (const k of ALLOWED_UPDATE_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(updates, k)) filtered[k] = updates[k];
   }
   if (!Object.keys(filtered).length) throw new Error('No hay campos válidos para actualizar');
-  filtered.updatedAt = new Date();
-  await db.collection('products').doc(productId).update(filtered);
+  updateProduct(productId, filtered);
   return { ok: true, productId, updated: Object.keys(filtered) };
 }
 
-/**
- * Oculta (desactiva) un producto.
- */
-async function hideProduct(productId) {
-  return updateProduct(productId, { active: false });
-}
+async function hideProduct(productId)  { return updateProductById(productId, { active: 0 }); }
+async function showProduct(productId)  { return updateProductById(productId, { active: 1 }); }
 
-/**
- * Activa un producto.
- */
-async function showProduct(productId) {
-  return updateProduct(productId, { active: true });
-}
-
-/**
- * Elimina un producto permanentemente.
- */
-async function deleteProduct(productId) {
+async function deleteProductById(productId) {
   if (!productId) throw new Error('Falta productId');
-  const db = getFirestore();
-  await db.collection('products').doc(productId).delete();
+  dbDeleteProduct(productId);
   return { ok: true, productId };
 }
 
-/**
- * Elimina en lote productos sin imagen.
- */
 async function bulkDeleteWithoutImage() {
-  const db = getFirestore();
-  const snap = await db.collection('products').get();
-  const withoutImage = snap.docs.filter(d => {
-    const img = d.data().image_url;
-    return !img || !String(img).trim();
-  });
-  const batch = db.batch();
-  withoutImage.forEach(d => batch.delete(d.ref));
-  await batch.commit();
+  const withoutImage = getAllProducts().filter(p => !p.image_url || !String(p.image_url).trim());
+  withoutImage.forEach(p => dbDeleteProduct(p.id));
   return { ok: true, deletedCount: withoutImage.length };
 }
 
-/**
- * Importa/sincroniza un array de productos desde scraping externo.
- * Usa slug como clave de deduplicación.
- */
 async function syncProductsFromArray(rawProducts, sourceUrl = '') {
-  const db = getFirestore();
-  const snap = await db.collection('products').get();
-  const existingBySlug = new Map(snap.docs.map(d => [d.data().slug, { id: d.id, ...d.data() }]));
-
-  let created = 0;
-  let updated = 0;
-
+  const existing = getAllProducts();
+  const bySlug   = new Map(existing.map(p => [p.slug, p]));
+  let created = 0, updated = 0;
   for (const p of rawProducts) {
-    const name = String(p.name || '').trim();
+    const name = String(p.name||'').trim();
     if (!name) continue;
-    const slug = slugify(name);
-    const category = ALLOWED_CATEGORIES.has(String(p.category || '').toLowerCase())
-      ? String(p.category).toLowerCase()
-      : 'mac';
-    const price = Number(p.price);
-    const payload = {
-      name, slug, category,
-      price: Number.isFinite(price) && price > 0 ? price : 1,
-      description: String(p.description || `${name} disponible en MacStore.`).slice(0, 2000),
-      image_url: String(p.image || p.image_url || ''),
-      variants: Array.isArray(p.variants) ? p.variants : [],
-      specs: (p.specs && typeof p.specs === 'object') ? p.specs : {},
-      active: true,
-      updatedAt: new Date(),
-      ficha: { notas: `Sincronizado desde ${sourceUrl}` },
-    };
-
-    const existing = existingBySlug.get(slug);
-    if (existing) {
-      await db.collection('products').doc(existing.id).update(payload);
-      updated++;
-    } else {
-      await db.collection('products').add({ ...payload, stock: 0, sort_order: 0, createdAt: new Date() });
-      created++;
-    }
+    const slug     = slugify(name);
+    const category = ALLOWED_CATEGORIES.has(String(p.category||'').toLowerCase()) ? String(p.category).toLowerCase() : 'mac';
+    const price    = Number(p.price);
+    const payload  = { name, slug, category, price: Number.isFinite(price)&&price>0?price:1, description: String(p.description||`${name} disponible en MacStore.`).slice(0,2000), image_url: String(p.image||p.image_url||''), variants: Array.isArray(p.variants)?p.variants:[], specs: (p.specs&&typeof p.specs==='object')?p.specs:{}, active: 1, ficha: { notas: `Sincronizado desde ${sourceUrl}` } };
+    const ex = bySlug.get(slug);
+    if (ex) { updateProduct(ex.id, payload); updated++; }
+    else    { insertProduct({ ...payload, stock:0, sort_order:0 }); created++; }
   }
-
   return { ok: true, created, updated, total: rawProducts.length };
 }
 
-// Alias para modo agente (nombres más explícitos)
-async function searchCatalogProducts(input) {
-  const filters = (input && typeof input === 'object') ? input : { nameContains: String(input || '') };
-  return searchProducts(filters);
-}
-
-async function createCatalogProduct(product) {
-  return createProduct(product || {});
-}
-
-async function updateCatalogProduct(productId, updates) {
-  return updateProduct(productId, updates || {});
-}
-
-async function deleteCatalogProduct(productId) {
-  return deleteProduct(productId);
-}
-
-async function hideCatalogProduct(productId) {
-  return hideProduct(productId);
-}
-
 async function bulkCatalogAction({ ids = [], operation } = {}) {
-  const db = getFirestore();
-  if (!Array.isArray(ids) || !ids.length) {
-    throw new Error('No hay ids para la acción masiva');
-  }
-
-  if (operation === 'delete') {
-    await Promise.all(ids.map(id => db.collection('products').doc(id).delete()));
-    return { ok: true, operation, affected: ids.length };
-  }
-
-  if (operation === 'hide' || operation === 'deactivate') {
-    await Promise.all(ids.map(id => db.collection('products').doc(id).update({ active: false, updatedAt: new Date() })));
-    return { ok: true, operation, affected: ids.length };
-  }
-
-  if (operation === 'show' || operation === 'activate') {
-    await Promise.all(ids.map(id => db.collection('products').doc(id).update({ active: true, updatedAt: new Date() })));
-    return { ok: true, operation, affected: ids.length };
-  }
-
+  if (!Array.isArray(ids) || !ids.length) throw new Error('No hay ids para la acción masiva');
+  if (operation === 'delete')                      { ids.forEach(id => dbDeleteProduct(id)); return { ok:true, operation, affected:ids.length }; }
+  if (operation === 'hide' || operation === 'deactivate') { ids.forEach(id => updateProduct(id,{active:0})); return { ok:true, operation, affected:ids.length }; }
+  if (operation === 'show' || operation === 'activate')   { ids.forEach(id => updateProduct(id,{active:1})); return { ok:true, operation, affected:ids.length }; }
   throw new Error(`Operación masiva no soportada: ${operation}`);
 }
 
 module.exports = {
-  searchProducts,
-  searchCatalogProducts,
-  createProduct,
-  createCatalogProduct,
-  updateProduct,
-  updateCatalogProduct,
-  hideProduct,
-  hideCatalogProduct,
+  searchProducts, searchCatalogProducts: searchProducts,
+  createProduct, createCatalogProduct: createProduct,
+  updateProduct: updateProductById, updateCatalogProduct: updateProductById,
+  hideProduct, hideCatalogProduct: hideProduct,
   showProduct,
-  deleteProduct,
-  deleteCatalogProduct,
-  bulkDeleteWithoutImage,
-  bulkCatalogAction,
-  syncProductsFromArray,
+  deleteProduct: deleteProductById, deleteCatalogProduct: deleteProductById,
+  bulkDeleteWithoutImage, bulkCatalogAction, syncProductsFromArray,
 };

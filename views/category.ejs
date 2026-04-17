@@ -96,63 +96,72 @@
       const firstColor = pcols.length ? pcols[0] : null;
       const pid = (p.id||p.slug||'').replace(/[^a-z0-9]/gi,'');
     %>
-    <a href="/producto/<%=p.slug%>" class="ms-card" data-price="<%=p.price||0%>" data-name="<%=(p.name||'').toLowerCase()%>" data-order="<%=p.sort_order||0%>" style="text-decoration:none;color:inherit">
-      <div class="ms-card-img" style="--img-scale:<%=firstColor&&firstColor.img_scale ? firstColor.img_scale : (p.img_scale||1)%>">
-        <% if(p.badge){ %><span class="ms-card-badge"><%=p.badge%></span><% } %>
-        <div class="ms-card-glow"></div>
-        <% const srcMed = firstColor&&firstColor.image_url ? firstColor.image_url : (p.image_url||'');
-           const isVM = String(srcMed).match(/\.(mp4|webm|ogg|mov)$/i); %>
-        <% if(isVM) { %>
-          <video id="cardvid_<%=pid%>" src="<%=srcMed%>" autoplay loop muted playsinline style="max-height:220px;width:100%;object-fit:contain;"></video>
-        <% } else { %>
-          <img id="cardimg_<%=pid%>" src="<%=srcMed%>" alt="<%=p.name%>" loading="lazy" style="object-fit:<%=firstColor&&firstColor.img_fit ? firstColor.img_fit : (p.img_fit||'contain')%>;object-position:<%=firstColor&&firstColor.img_pos ? firstColor.img_pos : (p.img_pos||'center')%>;transform:scale(<%=firstColor&&firstColor.img_scale ? firstColor.img_scale : (p.img_scale||1)%>);transform-origin:center center" onerror="this.style.display='none'">
-        <% } %>
-      </div>
-      <div style="padding:12px 14px 16px;flex:1;display:flex;flex-direction:column;gap:8px">
-        <h3 style="font-size:15px;font-weight:600;letter-spacing:-.02em;line-height:1.2;margin:0"><%=p.name%></h3>
-
-        <% if(pcols.length){ %>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-          <% pcols.slice(0,6).forEach((c,ci)=>{
-            const sw = c.swatch_url||c.image_url||'';
-            const img = c.image_url||p.image_url||'';
-            const caps = Array.isArray(c.available_caps)&&c.available_caps.length ? c.available_caps : allCaps;
-            if(!sw) return;
-          %>
-          <span
-            class="ms-card-swatch <%=ci===0?'active':''%>"
-            style="background-image:url('<%=sw%>')"
-            title="<%=c.name||''%>"
-            onclick="(function(el,e){e.preventDefault();e.stopPropagation();swatchClick(el,'<%=pid%>','<%=img%>',<%=JSON.stringify(caps)%>,'<%=c.img_fit||p.img_fit||'contain'%>','<%=c.img_pos||p.img_pos||'center'%>','<%=c.img_scale||p.img_scale||1%>')})(this,event)"
-          ></span>
-          <% }) %>
-          <% if(pcols.length>6){ %><span class="ms-card-swatch-more">+<%=pcols.length-6%></span><% } %>
+    <%
+      const firstCatVariant = pvars.find(v=>v&&v.label);
+      const waTextCat = 'Hola%2C%20quiero%20comprar%20' + encodeURIComponent(p.name) + (firstCatVariant?' '+encodeURIComponent(firstCatVariant.label):'') + '%20(' + encodeURIComponent(formatPrice(firstCatVariant&&firstCatVariant.price?firstCatVariant.price:p.price)) + ')';
+      const srcMed = firstColor&&firstColor.image_url ? firstColor.image_url : (p.image_url||'');
+      const isVM = String(srcMed).match(/\.(mp4|webm|ogg|mov)$/i);
+    %>
+    <div class="ms-card" data-price="<%=p.price||0%>" data-name="<%=(p.name||'').toLowerCase()%>" data-order="<%=p.sort_order||0%>" style="display:flex;flex-direction:column;padding:0;overflow:hidden">
+      <a href="/producto/<%=p.slug%>" style="text-decoration:none;color:inherit;display:block;background:#fff">
+        <div class="ms-card-img" style="--img-scale:<%=firstColor&&firstColor.img_scale ? firstColor.img_scale : (p.img_scale||1)%>;margin-bottom:0;background:#fff">
+          <% if(p.badge){ %><span class="ms-card-badge"><%=p.badge%></span><% } %>
+          <div class="ms-card-glow"></div>
+          <% if(isVM) { %>
+            <video id="cardvid_<%=pid%>" src="<%=srcMed%>" autoplay loop muted playsinline style="max-height:220px;width:100%;object-fit:contain;"></video>
+          <% } else { %>
+            <img id="cardimg_<%=pid%>" src="<%=srcMed%>" alt="<%=p.name%>" loading="lazy" style="object-fit:<%=firstColor&&firstColor.img_fit ? firstColor.img_fit : (p.img_fit||'contain')%>;object-position:<%=firstColor&&firstColor.img_pos ? firstColor.img_pos : (p.img_pos||'center')%>;transform:scale(<%=firstColor&&firstColor.img_scale ? firstColor.img_scale : (p.img_scale||1)%>);transform-origin:center center" onerror="this.style.display='none'">
+          <% } %>
         </div>
-        <% } %>
+      </a>
+      <div style="background:#f5f5f7;padding:12px 14px 14px;flex:1;display:flex;flex-direction:column;gap:4px">
+        <a href="/producto/<%=p.slug%>" style="text-decoration:none;color:inherit">
+          <h3 style="font-size:15px;font-weight:600;letter-spacing:-.02em;line-height:1.2;margin:0 0 4px;color:#1d1d1f"><%=p.name%></h3>
+          <% if(firstCatVariant){ %><p style="font-size:13px;color:#515154;margin:0 0 4px"><%=firstCatVariant.label%></p><% } %>
+        </a>
 
-        <% if(allCaps.length){ %>
-        <div id="caps_<%=pid%>" style="display:flex;flex-wrap:wrap;gap:5px">
-          <% allCaps.forEach(cap=>{ const active=firstColorCaps.includes(cap); %>
+        <% if(allCaps.length && !firstCatVariant){ %>
+        <div id="caps_<%=pid%>" style="display:flex;flex-wrap:wrap;gap:4px">
+          <% allCaps.slice(0,3).forEach(cap=>{ const active=firstColorCaps.includes(cap); %>
           <span data-cap="<%=cap%>" style="font-size:11px;border:1px solid <%=active?'#d2d2d7':'#e8e8ed'%>;border-radius:6px;padding:2px 8px;color:<%=active?'#515154':'#c0c0c0'%>;font-weight:<%=active?'500':'400'%>;text-decoration:<%=active?'none':'line-through'%>"><%=cap%></span>
           <% }) %>
         </div>
         <% } %>
 
-        <div style="margin-top:auto">
-          <% if((p.price||0) > 150 && p.enable_installments !== false){ %>
-          <div style="font-size:11px;color:#86868b;margin-bottom:4px">
-            10 cuotas: <strong style="color:#1d1d1f">$<%=(p.price/10).toFixed(2)%></strong>
-            &nbsp;·&nbsp;
-            6 cuotas: <strong style="color:#1d1d1f">$<%=(p.price/6).toFixed(2)%></strong>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto;padding-top:8px;margin-bottom:10px">
+          <div>
+            <% if(p.original_price){ %><span style="font-size:13px;color:#86868b;text-decoration:line-through;margin-right:5px"><%=formatPrice(p.original_price)%></span><% } %><span style="font-size:17px;font-weight:700;letter-spacing:-.03em;color:#1d1d1f"><%=formatPrice(p.price)%></span>
+          </div>
+          <% if(pcols.length){ %>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end" onclick="event.preventDefault()">
+            <% pcols.slice(0,4).forEach((c,ci)=>{
+              const sw = c.swatch_url||c.image_url||'';
+              const img = c.image_url||p.image_url||'';
+              const caps = Array.isArray(c.available_caps)&&c.available_caps.length ? c.available_caps : allCaps;
+              if(!sw) return;
+            %>
+            <span
+              class="ms-card-swatch <%=ci===0?'active':''%>"
+              style="width:18px;height:18px;background-image:url('<%=sw%>')"
+              title="<%=c.name||''%>"
+              onclick="(function(el,e){e.preventDefault();e.stopPropagation();swatchClick(el,'<%=pid%>','<%=img%>',<%=JSON.stringify(caps)%>,'<%=c.img_fit||p.img_fit||'contain'%>','<%=c.img_pos||p.img_pos||'center'%>','<%=c.img_scale||p.img_scale||1%>')})(this,event)"
+            ></span>
+            <% }) %>
+            <% if(pcols.length>4){ %><span class="ms-card-swatch-more" style="width:18px;height:18px;font-size:9px">+<%=pcols.length-4%></span><% } %>
           </div>
           <% } %>
-          <div style="display:flex;align-items:baseline;gap:8px">
-            <span style="font-size:18px;font-weight:700;letter-spacing:-.03em"><%=formatPrice(p.price)%></span>
-            <% if(p.original_price){ %><span style="font-size:13px;color:#86868b;text-decoration:line-through"><%=formatPrice(p.original_price)%></span><% } %>
-          </div>
         </div>
+        <% if(settings&&settings.store_whatsapp){ %>
+        <a href="https://wa.me/<%=settings.store_whatsapp%>?text=<%=waTextCat%>" target="_blank"
+           style="display:block;width:100%;text-align:center;background:#0071e3;color:#fff;padding:11px 0;border-radius:980px;font-size:15px;font-weight:600;text-decoration:none;transition:background .2s;box-sizing:border-box"
+           onmouseover="this.style.background='#0077ed'" onmouseout="this.style.background='#0071e3'">Comprar</a>
+        <% } else { %>
+        <a href="/producto/<%=p.slug%>"
+           style="display:block;width:100%;text-align:center;background:#0071e3;color:#fff;padding:11px 0;border-radius:980px;font-size:15px;font-weight:600;text-decoration:none;transition:background .2s;box-sizing:border-box"
+           onmouseover="this.style.background='#0077ed'" onmouseout="this.style.background='#0071e3'">Comprar</a>
+        <% } %>
       </div>
-    </a>
+    </div>
     <% }) %>
   </div>
   <% } else { %>

@@ -117,7 +117,7 @@ button { font-family: var(--font); cursor: pointer; }
 .ms-inner { max-width: 1100px; margin: 0 auto; padding: 0; }
 
 .ms-catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 32px; }
-.ms-card { background: #fff; border-radius: 24px; overflow: hidden; display: flex; flex-direction: column; text-decoration: none; color: inherit; transition: transform 0.6s var(--ease), box-shadow 0.6s var(--ease); border: none; box-shadow: 0 4px 24px rgba(0,0,0,0.02); padding: 32px 32px 40px; }
+.ms-card { background: #fff; border-radius: 24px; overflow: hidden; display: flex; flex-direction: column; text-decoration: none; color: inherit; transition: transform 0.6s var(--ease), box-shadow 0.6s var(--ease); border: none; box-shadow: 0 4px 24px rgba(0,0,0,0.02); padding: 0; }
 .ms-card:hover { box-shadow: 0 16px 40px rgba(0,0,0,0.06); transform: translateY(-4px) scale(1.005); }
 
 .ms-card-img { height: 240px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; margin-bottom: 32px; }

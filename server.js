@@ -16,8 +16,6 @@ adoptEnvAlias('ADMIN_PASSWORD', ['ADMIN_CONTRASENA', 'ADMIN_CONTRASEÑA', 'ADMIN
 adoptEnvAlias('CLOUDINARY_API_KEY', ['CLAVE_API_CLOUDINARIA', 'CLOUDINARY_API_KEY']);
 adoptEnvAlias('CLOUDINARY_API_SECRET', ['CLOUDINARY_API_SECRET']);
 adoptEnvAlias('CLOUDINARY_CLOUD_NAME', ['CLOUDINARY_NOMBRE_NUBE', 'CLOUDINARY_CLOUD_NAME']);
-adoptEnvAlias('FIREBASE_SERVICE_ACCOUNT', ['CUENTA_SERVICIO_FIREBASE', 'FIREBASE_SERVICE_ACCOUNT']);
-adoptEnvAlias('FIREBASE_STORAGE_BUCKET', ['FIREBASE_STORAGE_BUCKET']);
 adoptEnvAlias('GOOGLE_AI_API_KEY', ['CLAVE_API_IA_GOOGLE', 'GOOGLE_AI_API_KEY']);
 adoptEnvAlias('GEMINI_API_KEY', ['CLAVE_API_GEMINIS', 'CLAVE_API_GÉMINIS', 'GEMINI_API_KEY']);
 adoptEnvAlias('JWT_SECRET', ['JWT_SECRETO', 'JWT_SECRET']);
@@ -102,7 +100,7 @@ function addSecurityHeaders(req, res, next) {
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com; font-src 'self' fonts.gstatic.com cdnjs.cloudflare.com data:; img-src 'self' data: https: blob: storage.googleapis.com firebasestorage.googleapis.com; connect-src 'self' https://res.cloudinary.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com; font-src 'self' fonts.gstatic.com cdnjs.cloudflare.com data:; img-src 'self' data: https: blob: storage.googleapis.com firebasestorage.googleapis.com; connect-src 'self' https://res.cloudinary.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
   );
   // Sin caché en todas las rutas sensibles y en archivos JS
   if (
@@ -232,7 +230,7 @@ initializeDB().then(() => {
     https.createServer(sslOptions, app).listen(HTTPS_PORT, '0.0.0.0', () => {
       console.log(`
   ╔══════════════════════════════════════════╗
-  ║   MacStore + Firebase v2.0  (HTTPS)     ║
+  ║   MacStore + SQLite  (HTTPS)            ║
   ║   https://localhost:${HTTPS_PORT}            ║
   ║   https://${LOCAL_IP}:${HTTPS_PORT}       ║
   ║   Admin: https://${LOCAL_IP}:${HTTPS_PORT}/admin ║
@@ -244,13 +242,13 @@ initializeDB().then(() => {
     app.listen(HTTP_PORT, '0.0.0.0', () => {
       console.log(`
   ╔══════════════════════════════════════════╗
-  ║   MacStore + Firebase v2.0              ║
+  ║   MacStore + SQLite                     ║
   ║   http://localhost:${HTTP_PORT}              ║
   ║   (SSL gestionado por el proveedor)     ║
   ╚══════════════════════════════════════════╝`);
     });
   }
 }).catch(err => {
-  console.error('Error iniciando Firebase:', err.message);
+  console.error('Error iniciando la base de datos:', err.message);
   process.exit(1);
 });
