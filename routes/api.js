@@ -679,11 +679,24 @@ async function renderPageForEditor(pageName) {
     return ejs.renderFile(ppath.join(VIEWS_DIR,'product.ejs'), { ...base, product, related, title: product.name }, opts);
   }
   if (pageName === 'category') {
-    // Mostrar la primera categoría con imagen si la tiene; si no, la primera disponible
-    const catWithImg = categories.find(c => c.image_url) || categories[0]
-                       || { id:'0', name:'Categoría', slug:'mac' };
+    const catWithImg = categories.find(c => c.image_url) || categories[0] || { id:'0', name:'Categoría', slug:'mac' };
     const products = getAllProducts().filter(p=>p.active!==false&&p.category===catWithImg.slug).slice(0,24);
     return ejs.renderFile(ppath.join(VIEWS_DIR,'category.ejs'), { ...base, category: catWithImg, products, title: catWithImg.name }, opts);
+  }
+  // ── Categoría específica: category-{slug}
+  if (pageName.startsWith('category-')) {
+    const slug = pageName.slice(9);
+    const category = categories.find(c => c.slug === slug) || { id:'0', name: slug, slug };
+    const products = getAllProducts().filter(p=>p.active!==false&&(p.category===slug||p.cat_slug===slug)).slice(0,48);
+    return ejs.renderFile(ppath.join(VIEWS_DIR,'category.ejs'), { ...base, category, products, title: category.name }, opts);
+  }
+  // ── Producto específico: product-{slug}
+  if (pageName.startsWith('product-')) {
+    const slug = pageName.slice(8);
+    const allProds = getAllProducts().filter(p=>p.active!==false);
+    const product = allProds.find(p=>p.slug===slug) || allProds[0] || { id:'0', name:'Producto', price:0, slug, image_url:'', category:'', specs:{}, color_variants:[], variants:[] };
+    const related = allProds.filter(p=>p.id!==product.id&&p.category===product.category).slice(0,4);
+    return ejs.renderFile(ppath.join(VIEWS_DIR,'product.ejs'), { ...base, product, related, title: product.name }, opts);
   }
   throw new Error('Página no válida: ' + pageName);
 }
@@ -702,11 +715,28 @@ router.get('/editor/design', requireAdminAPI, (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+function stripBadHeroCss(input) {
+  if (!input) return input;
+  const badSelectors = [
+    /\.?ms-hero-wrap\s*\{[^}]*(?:height|width)\s*:\s*\d+px[^}]*\}/g,
+    /\.?ms-hero-overlay\s*\{[^}]*(height|width)\s*:\s*\d+px[^}]*\}/g,
+    /\.?ms-hero-bg\s*\{[^}]*(height|width|color)\s*:[^}]*(?:\d+px|rgb\(1[0-9]{2})[^}]*\}/g,
+    /\.?ms-hero-title\s*\{[^}]*color\s*:\s*rgb\(\s*1[0-9]{2}[^)]*\)[^}]*\}/g,
+    /\.?(?:ms-slide\.)?hero-banner-slide(?:\.active)?\s*\{[^}]*(?:height|width)\s*:\s*\d+px[^}]*\}/g,
+  ];
+  let out = input;
+  for (const re of badSelectors) out = out.replace(re, '');
+  return out;
+}
+
 router.post('/editor/save', requireAdminAPI, (req, res) => {
   try {
-    const { page, html, css, gjsData } = req.body;
+    const { page, gjsData } = req.body;
     if (!page) return res.status(400).json({ error:'Falta page' });
-    savePageDesign(page, html||'', css||'', gjsData||'{}');
+    const cleanCss  = stripBadHeroCss(req.body.css  || '');
+    const cleanHtml = (req.body.html || '').replace(/<style[^>]*>([\s\S]*?)<\/style>/gi,
+      (m, s) => m.replace(s, stripBadHeroCss(s)));
+    savePageDesign(page, cleanHtml, cleanCss, gjsData||'{}');
     clearCache();
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }

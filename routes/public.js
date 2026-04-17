@@ -102,12 +102,15 @@ router.get('/categoria/:slug', (req, res) => {
 
     if (!category) return res.status(404).render('404', { title:'No encontrado', description:'', settings, categories, announcements });
 
+    const saved = getSavedHtml('category-' + slug);
+    if (saved) return res.send(saved);
+
     const products = getAllProducts({ active: true, category: slug });
     res.render('category', {
       req, title: category.name, description: category.description || '',
       settings, categories, category, products, announcements,
       formatPrice: fmt,
-      editorCss:   getEditorCss('category'),
+      editorCss:   getEditorCss('category-' + slug) || getEditorCss('category'),
     });
   } catch (e) { console.error(e); res.status(500).send('Error interno del servidor'); }
 });
@@ -123,6 +126,9 @@ router.get('/producto/:slug', (req, res) => {
 
     if (!product || !product.active) return res.status(404).render('404', { title:'No encontrado', description:'', settings, categories, announcements });
 
+    const saved = getSavedHtml('product-' + slug);
+    if (saved) return res.send(saved);
+
     const related = getAllProducts({ active: true, category: product.category })
       .filter(p => p.id !== product.id)
       .slice(0, 4);
@@ -131,7 +137,7 @@ router.get('/producto/:slug', (req, res) => {
       req, title: product.name, description: product.description || '',
       settings, categories, product, related, announcements,
       formatPrice: fmt,
-      editorCss:   getEditorCss('product'),
+      editorCss:   getEditorCss('product-' + slug) || getEditorCss('product'),
     });
   } catch (e) { console.error(e); res.status(500).send('Error interno del servidor'); }
 });

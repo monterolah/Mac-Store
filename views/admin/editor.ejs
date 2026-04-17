@@ -189,10 +189,20 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
   <div class="sep"></div>
   <span style="color:#86868b;font-size:12px;flex-shrink:0">Página:</span>
   <select id="psel" onchange="loadPage(this.value)">
-    <option value="home">Portada</option>
-    <option value="catalog">Catálogo</option>
-    <option value="product">Producto (plantilla)</option>
-    <option value="category">Categoría (plantilla)</option>
+    <optgroup label="Páginas principales">
+      <option value="home">Portada</option>
+      <option value="catalog">Catálogo</option>
+    </optgroup>
+    <optgroup label="Categorías">
+      <% (categories||[]).forEach(c=>{ %>
+      <option value="category-<%=c.slug%>"><%=c.name%></option>
+      <% }) %>
+    </optgroup>
+    <optgroup label="Productos">
+      <% (products||[]).forEach(p=>{ %>
+      <option value="product-<%=p.slug%>"><%=p.name%></option>
+      <% }) %>
+    </optgroup>
   </select>
   <div class="sep"></div>
   <div class="dev-grp">
