@@ -3,17 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Editor — MacStore</title>
+<title>Editor Libre — MacStore</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/grapesjs@0.21.13/dist/css/grapes.min.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-/* Fondo más oscuro para que resalte el cristal esmerilado */
 html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000}
 
 /* ── TOP BAR ─────────────────────────────────── */
 #ed-bar{
   position:fixed;top:0;left:0;right:0;height:50px;
-  /* Efecto Glassmorphism */
   background: rgba(29, 29, 31, 0.72) !important;
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -48,7 +46,6 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 /* Left sidebar */
 #ed-left{
   width:50px;
-  /* Efecto Glassmorphism */
   background: rgba(29, 29, 31, 0.72) !important;
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -65,6 +62,565 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 .ltool-del svg{stroke:#ff6b6b}
 .ltool-del:hover{background:#3a1a1a!important}
 .tip{
+  position:absolute;left:46px;top:50%;transform:translateY(-50%);
+  background:#333;color:#fff;padding:3px 8px;border-radius:5px;
+  font-size:11px;white-space:nowrap;opacity:0;pointer-events:none;transition:.1s;z-index:999;
+}
+.ltool:hover .tip{opacity:1}
+
+/* Canvas */
+#gjs{flex:1;min-width:0;overflow:hidden;background:#2c2c2e}
+#ed-right{min-width:256px;position:relative;z-index:2}
+
+/* Right panel */
+#ed-right{
+  width:256px;
+  background: rgba(29, 29, 31, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-left:1px solid rgba(255, 255, 255, 0.08) !important;
+  display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;
+}
+.rtabs{
+  display:flex;
+  border-bottom:1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(29, 29, 31, 0.72) !important;
+  flex-shrink:0;
+}
+.rtab{
+  flex:1;padding:9px 4px;text-align:center;font-size:11px;font-weight:500;
+  color:#86868b;background:none;border:none;cursor:pointer;
+  border-bottom:2px solid transparent;transition:.15s;
+}
+.rtab.on{color:#fff;border-bottom-color:#0071e3}
+.rpanel{flex:1;overflow-y:auto;display:none}
+.rpanel.on{display:block}
+
+/* Scrollbars invisibles estilo Mac */
+.rpanel::-webkit-scrollbar, #code-ta::-webkit-scrollbar { width: 6px; }
+.rpanel::-webkit-scrollbar-track, #code-ta::-webkit-scrollbar-track { background: transparent; }
+.rpanel::-webkit-scrollbar-thumb, #code-ta::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+.rpanel:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.4); }
+
+/* GrapesJS tweaks - Ajustes visuales del editor */
+.gjs-editor,.gjs-editor-cont{height:100%!important}
+.gjs-cv-canvas{background:#f0f0f0!important}
+.gjs-toolbar{background:#0071e3!important;border-radius:6px!important}
+.gjs-toolbar-item:hover{background:rgba(255,255,255,.2)!important}
+.gjs-selected{outline:2px solid #0071e3!important;outline-offset:1px!important}
+.gjs-hovered{outline:1px dashed #0071e3!important;outline-offset:1px!important}
+.gjs-sm-sector-title,.gjs-sm-title,.gjs-sm-field,.gjs-sm-select,.gjs-sm-input{background:#2c2c2e!important;color:#ccc!important}
+.gjs-sm-sector-title{padding:8px 10px!important;font-size:11px!important;text-transform:uppercase!important;letter-spacing:.05em!important;color:#86868b!important}
+.gjs-sm-property{border-bottom:1px solid #333!important}
+.gjs-pn-panel,.gjs-block-categories,.gjs-block-category{background:transparent!important;color:#ccc!important}
+.gjs-block{border-color:#333!important;background:#2c2c2e!important;color:#ccc!important}
+.gjs-block:hover{border-color:#0071e3!important;color:#fff!important}
+.gjs-blocks-c{padding:6px!important}
+.gjs-block-label{font-size:11px!important}
+.gjs-layer,.gjs-layer-title{background:transparent!important;color:#ccc!important;border-color:#333!important}
+.gjs-layer.gjs-selected{background:#2c2c2e!important}
+.gjs-field,.gjs-input-unit{background:#2c2c2e!important;color:#ccc!important;border-color:#444!important}
+.gjs-clm-tag{background:#2c2c2e!important;color:#ccc!important}
+.gjs-trt-trait{border-color:#333!important}
+.gjs-pn-panels{display:none!important}
+#gjs .gjs-frame-wrapper{padding:12px!important}
+.gjs-toolbar-item svg{vertical-align:middle}
+
+#comp-info{
+  padding:5px 8px;font-size:11px;font-family:monospace;
+  color:#555;background:transparent;border-bottom:1px solid rgba(255,255,255,0.08);
+  min-height:22px;line-height:1.4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+}
+.ltool-dup svg{stroke:#56c0f2}
+.ltool-dup:hover{background:#0d2a38!important}
+
+/* Loading & Toast */
+#ed-loading{
+  position:fixed;inset:50px 0 0 0;background:#1a1a1a;z-index:8888;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;color:#86868b;font-size:14px;
+}
+.spin{width:32px;height:32px;border:3px solid #333;border-top-color:#0071e3;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+#toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);opacity:0;
+  background:#1d1d1f;color:#fff;padding:9px 18px;border-radius:9px;font-size:13px;font-weight:500;
+  z-index:99999;transition:.2s;box-shadow:0 4px 18px rgba(0,0,0,.4);
+}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#toast.ok{border-left:3px solid #28a745}
+#toast.err{border-left:3px solid #c0392b}
+
+#code-modal{
+  position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99998;
+  display:none;align-items:stretch;justify-content:center;padding:12px;
+}
+#code-modal.open{display:flex}
+#code-box{
+  background:#1d1d1f;border-radius:12px;display:flex;flex-direction:column;
+  width:100%;max-width:980px;overflow:hidden;border:1px solid #333;
+}
+#code-tabs{display:flex;border-bottom:1px solid #2c2c2e;flex-shrink:0}
+.ctab{
+  padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer;
+  background:none;border:none;color:#86868b;border-bottom:2px solid transparent;
+  transition:.15s;font-family:inherit;
+}
+.ctab.on{color:#fff;border-bottom-color:#0071e3}
+#code-ta{
+  flex:1;background:#111;color:#e8e8e8;border:none;outline:none;
+  font-family:'SF Mono',Menlo,Monaco,'Courier New',monospace;font-size:13px;
+  line-height:1.6;padding:16px;resize:none;tab-size:2;
+}
+#code-foot{
+  display:flex;align-items:center;gap:8px;padding:10px 14px;
+  border-top:1px solid rgba(255, 255, 255, 0.08);flex-shrink:0;
+  background: rgba(29, 29, 31, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+}
+#code-foot span{flex:1;font-size:11px;color:#aaa}
+.cbtn{
+  padding:7px 16px;border-radius:7px;border:none;font-size:13px;
+  font-weight:600;cursor:pointer;font-family:inherit;transition:.15s;
+}
+.cbtn-cancel{background:#2c2c2e;color:#ccc}.cbtn-cancel:hover{background:#3a3a3c}
+.cbtn-apply{background:#0071e3;color:#fff}.cbtn-apply:hover{background:#0077ed}
+
+#abs-badge{
+  display:none;position:fixed;top:56px;left:50%;transform:translateX(-50%);
+  background:#ff9f0a;color:#000;font-size:11px;font-weight:700;
+  padding:3px 12px;border-radius:20px;z-index:9990;letter-spacing:.02em;
+}
+#abs-badge.on{display:block}
+</style>
+</head>
+<body>
+
+<div id="ed-bar">
+  <a class="back" href="/admin">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Admin
+  </a>
+  <div class="sep"></div>
+  <span style="color:#86868b;font-size:12px;flex-shrink:0">Página:</span>
+  <select id="psel" onchange="loadPage(this.value)">
+    <optgroup label="Páginas principales">
+      <option value="home">Portada</option>
+      <option value="catalog">Catálogo</option>
+    </optgroup>
+    <optgroup label="Categorías">
+      <% (categories||[]).forEach(c=>{ %>
+      <option value="category-<%=c.slug%>"><%=c.name%></option>
+      <% }) %>
+    </optgroup>
+    <optgroup label="Productos">
+      <% (products||[]).forEach(p=>{ %>
+      <option value="product-<%=p.slug%>"><%=p.name%></option>
+      <% }) %>
+    </optgroup>
+  </select>
+  <div class="sep"></div>
+  <div class="dev-grp">
+    <button class="dev-btn on" id="d-desktop" onclick="setDev('desktop')" title="Escritorio">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    </button>
+    <button class="dev-btn" id="d-tablet" onclick="setDev('tablet')" title="Tablet">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+    </button>
+    <button class="dev-btn" id="d-mobile" onclick="setDev('mobile')" title="Móvil">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="spacer"></div>
+  <button class="tbtn tbtn-ghost" onclick="ed?.UndoManager?.undo()" title="Deshacer (Cmd+Z)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+  </button>
+  <button class="tbtn tbtn-ghost" onclick="ed?.UndoManager?.redo()" title="Rehacer (Cmd+Shift+Z)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>
+  </button>
+  <button class="tbtn tbtn-ghost" id="btn-code" onclick="openCodeEditor()" title="Editor de código HTML/CSS">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    Código
+  </button>
+  <button class="tbtn tbtn-ghost" id="btn-abs" onclick="toggleAbsMode()" title="Activar posición libre global">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
+    Libre (Canva)
+  </button>
+  <button class="tbtn tbtn-ghost" id="btn-prev" onclick="togglePreview()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    Vista previa
+  </button>
+  <button class="tbtn tbtn-ghost" id="btn-reload" onclick="reloadContent()" title="Recargar contenido real">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    Recargar
+  </button>
+  <button class="tbtn tbtn-green" id="btn-save" onclick="saveDesign()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Guardar
+  </button>
+</div>
+
+<div id="ed-main">
+
+  <div id="ed-left">
+    <button class="ltool on" id="lt-style" onclick="showPanel('style')" title="Estilos">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      <span class="tip">Estilos</span>
+    </button>
+    <button class="ltool" id="lt-blocks" onclick="showPanel('blocks')" title="Bloques">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      <span class="tip">Bloques</span>
+    </button>
+    <button class="ltool" id="lt-layers" onclick="showPanel('layers')" title="Capas">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+      <span class="tip">Capas</span>
+    </button>
+    <button class="ltool" id="lt-traits" onclick="showPanel('traits')" title="Propiedades">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/><circle cx="2" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="6" cy="18" r="1" fill="currentColor"/></svg>
+      <span class="tip">Propiedades</span>
+    </button>
+    <div style="flex:1"></div>
+    <button class="ltool ltool-dup" onclick="dupSelected()" title="Duplicar seleccionado">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      <span class="tip">Duplicar</span>
+    </button>
+    <button class="ltool ltool-del" onclick="delSelected()" title="Eliminar seleccionado">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      <span class="tip">Eliminar</span>
+    </button>
+  </div>
+
+  <div id="gjs"></div>
+
+  <div id="ed-right">
+    <div class="rtabs">
+      <button class="rtab on" onclick="showPanel('style')">Estilo</button>
+      <button class="rtab" onclick="showPanel('blocks')">Bloques</button>
+      <button class="rtab" onclick="showPanel('layers')">Capas</button>
+      <button class="rtab" onclick="showPanel('traits')">Props</button>
+    </div>
+    <div id="rp-style"  class="rpanel on">
+      <div id="comp-info">Selecciona un elemento para editar</div>
+      <div id="sel-wrap" style="padding:4px 8px;border-bottom:1px solid #333;min-height:28px"></div>
+      <div id="sm-wrap"></div>
+    </div>
+    <div id="rp-blocks" class="rpanel"><div id="bm-wrap"></div></div>
+    <div id="rp-layers" class="rpanel"><div id="lm-wrap"></div></div>
+    <div id="rp-traits" class="rpanel"><div id="tm-wrap"></div></div>
+  </div>
+
+</div>
+
+<div id="ed-loading">
+  <div class="spin"></div>
+  <span id="ed-msg">Cargando página...</span>
+</div>
+<div id="toast"></div>
+<div id="abs-badge">✦ MODO CANVA ACTIVADO</div>
+
+<div id="code-modal">
+  <div id="code-box">
+    <div id="code-tabs">
+      <button class="ctab on" id="ctab-html" onclick="switchCodeTab('html')">HTML</button>
+      <button class="ctab"    id="ctab-css"  onclick="switchCodeTab('css')">CSS</button>
+    </div>
+    <textarea id="code-ta" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+    <div id="code-foot">
+      <span id="code-hint">Edita el HTML o CSS y presiona Aplicar</span>
+      <button class="cbtn cbtn-cancel" onclick="closeCodeEditor()">Cancelar</button>
+      <button class="cbtn cbtn-apply"  onclick="applyCode()">Aplicar ✓</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/grapesjs@0.21.13/dist/grapes.min.js"></script>
+<script>
+const TOKEN = <%- JSON.stringify(token) %>;
+const SETTINGS = <%- JSON.stringify(settings) %>;
+let ed = null;
+let curPage = 'home';
+let prevMode = false;
+
+// ── Panel switcher ────────────────────────────────────────────────────────
+function showPanel(name) {
+  document.querySelectorAll('.rpanel').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.rtab').forEach(t => t.classList.remove('on'));
+  document.querySelectorAll('.ltool[id^="lt-"]').forEach(b => b.classList.remove('on'));
+  const rp = document.getElementById('rp-' + name);
+  if (rp) rp.classList.add('on');
+  const lt = document.getElementById('lt-' + name);
+  if (lt) lt.classList.add('on');
+  const tabs = document.querySelectorAll('.rtab');
+  const map = { style:0, blocks:1, layers:2, traits:3 };
+  if (map[name] !== undefined && tabs[map[name]]) tabs[map[name]].classList.add('on');
+}
+
+// ── Init GrapesJS ─────────────────────────────────────────────────────────
+function initEditor(bodyHtml, css) {
+  if (ed) { ed.destroy(); ed = null; }
+
+  ed = grapesjs.init({
+    container: '#gjs',
+    fromElement: false,
+    height: '100%',
+    width: 'auto',
+    storageManager: false,
+    allowScripts: 1,
+    components: bodyHtml || '<div style="padding:40px;text-align:center;color:#999">Cargando contenido...</div>',
+    style: css || '',
+    canvas: { styles: ['/css/macstore.css'] },
+    deviceManager: {
+      devices: [
+        { name:'Desktop', width:'' },
+        { name:'Tablet',  width:'768px',  widthMedia:'992px' },
+        { name:'Mobile',  width:'375px',  widthMedia:'480px' },
+      ]
+    },
+    selectorManager: { appendTo: '#sel-wrap' },
+    styleManager: {
+      appendTo: '#sm-wrap',
+      sectors: [
+        { name:'Tipografía', open:true, properties:[
+          { name:'Fuente', property:'font-family', type:'select', options:[{value:'inherit',name:'Predeterminada'},{value:'-apple-system,BlinkMacSystemFont,sans-serif',name:'Apple'},{value:'Arial,sans-serif',name:'Arial'}] },
+          { name:'Tamaño', property:'font-size', type:'integer', units:['px','em','rem','%','vw'] },
+          { name:'Color', property:'color', type:'color' },
+          { name:'Alineación', property:'text-align', type:'radio', options:[{value:'left',title:'Izq'},{value:'center',title:'Centro'},{value:'right',title:'Der'},{value:'justify',title:'Just'}] }
+        ]},
+        { name:'Fondo', open:false, properties:[
+          { name:'Color fondo', property:'background-color', type:'color' },
+          { name:'Img fondo', property:'background-image', type:'file' },
+          { name:'Tamaño fondo',property:'background-size', type:'select', options:[{value:'cover',name:'Cubrir'},{value:'contain',name:'Contener'}] }
+        ]},
+        { name:'Dimensiones', open:true, properties:[
+          { name:'Ancho', property:'width', type:'integer', units:['px','%','vw','rem','auto'] },
+          { name:'Alto', property:'height', type:'integer', units:['px','%','vh','rem','auto'] },
+          { property:'padding', type:'composite', properties:[ { name:'↑', property:'padding-top', type:'integer', units:['px','%'] }, { name:'→', property:'padding-right', type:'integer', units:['px','%'] }, { name:'↓', property:'padding-bottom', type:'integer', units:['px','%'] }, { name:'←', property:'padding-left', type:'integer', units:['px','%'] } ] },
+          { property:'margin', type:'composite', properties:[ { name:'↑', property:'margin-top', type:'integer', units:['px','%','auto'] }, { name:'→', property:'margin-right', type:'integer', units:['px','%','auto'] }, { name:'↓', property:'margin-bottom', type:'integer', units:['px','%','auto'] }, { name:'←', property:'margin-left', type:'integer', units:['px','%','auto'] } ] },
+        ]},
+        { name:'Posición', open:true, properties:[
+          { name:'Position', property:'position', type:'select', options:[{value:'static',name:'Normal'},{value:'relative',name:'Relativa'},{value:'absolute',name:'Absoluta (Libre)'},{value:'fixed',name:'Fija'}] },
+          { name:'Top', property:'top', type:'integer', units:['px','%'] },
+          { name:'Left', property:'left', type:'integer', units:['px','%'] },
+          { name:'Z-index', property:'z-index', type:'integer', units:[''] },
+        ]}
+      ]
+    },
+    blockManager: {
+      appendTo: '#bm-wrap',
+      blocks: [
+        {
+          id: 'global-header',
+          label: 'Header Global',
+          category: 'MacStore',
+          content: `
+            <header id="mac-global-header" style="background: rgba(29, 29, 31, 0.8); backdrop-filter: blur(16px); padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; z-index: 999;">
+              
+              <a href="/" style="display:inline-block; text-decoration:none;">
+                <img src="https://via.placeholder.com/150x40/000000/FFFFFF?text=Tu+Logo+Aqui" alt="Logo" style="max-height: 40px; width: auto; display: block;" />
+              </a>
+
+              <nav id="dynamic-category-nav" data-gjs-editable="false" style="display: flex; gap: 24px; font-size: 13px; font-weight: 400;">
+                <span style="color: #86868b; font-style: italic;">[ Menú Automático ]</span>
+              </nav>
+
+              <div style="display: flex; gap: 16px; color: #fff;">
+                <a href="/cart" style="color: #fff; text-decoration: none;">🛒</a>
+              </div>
+            </header>
+          `
+        },
+        { id:'text', label:'Texto Libre', category:'Básicos', content:'<div style="padding:20px; font-size:16px;">Escribe aquí...</div>' },
+        { id:'image', label:'Imagen', category:'Básicos', content:'<img src="https://via.placeholder.com/300x200" style="width:100%; display:block;" />' },
+        { id:'button', label:'Botón', category:'Básicos', content:'<a href="#" style="display:inline-block; background:#0071e3; color:#fff; padding:12px 24px; border-radius:8px; text-decoration:none;">Comprar</a>' }
+      ]
+    }
+  });
+
+  // MODO DIOS: Romper todas las reglas de restricción
+  ed.once('load', () => {
+    // 1. Inyectar CSS para que todo tenga bordes seleccionables
+    const doc = ed.Canvas.getDocument();
+    if (doc) {
+      const s = doc.createElement('style');
+      s.textContent = '* { box-sizing: border-box; } [data-gjs-type]:hover { outline: 1px dashed rgba(0,113,227,.5) !important; outline-offset: -1px; }';
+      doc.head.appendChild(s);
+    }
+
+    // 2. Aplicar libertad a TODO lo que ya existe
+    makeEverythingFree(ed.getWrapper());
+  });
+
+  setupEditorBehaviors();
+}
+
+// ── LA MAGIA: Función recursiva que desbloquea todo ───────────────────────
+function makeEverythingFree(component) {
+  if (!component) return;
+  
+  // Forzar redimensionamiento desde todas las esquinas y bordes
+  component.set({
+    resizable: { handles: 'tl, tc, tr, cl, cr, bl, bc, br' },
+    draggable: true,
+    droppable: true,
+    hoverable: true,
+    selectable: true,
+    copyable: true,
+    removable: true
+  });
+
+  // Si es un texto, asegurar que se puede dar doble clic para editar
+  if (component.is('text') || component.get('type') === 'text') {
+    component.set('editable', true);
+  }
+
+  // Quitar la restricción del menú dinámico si la tuviera
+  if (component.getAttributes()['id'] === 'dynamic-category-nav') {
+    // Solo dejamos bloqueado el texto, pero el contenedor es libre
+    component.set('editable', false); 
+  }
+
+  // Aplicar parche a su barra de herramientas
+  _patchToolbar(component);
+
+  // Repetir para los hijos
+  component.components().forEach(makeEverythingFree);
+}
+
+function setupEditorBehaviors() {
+  if (!ed) return;
+
+  // Cada vez que arrastres algo nuevo, ¡desbloquéalo!
+  ed.on('component:add', comp => {
+    makeEverythingFree(comp);
+  });
+
+  ed.on('component:selected', comp => {
+    const tag = comp.get('tagName') || comp.get('type') || 'div';
+    document.getElementById('comp-info').innerHTML = `<span style="color:#56c0f2">&lt;${tag}&gt;</span>`;
+    showPanel('style');
+  });
+
+  // Comando "Hacer Flotante"
+  ed.Commands.add('ms:make-float', {
+    run(editor) {
+      const c = editor.getSelected();
+      if(!c || c.is('wrapper')) return;
+      c.addStyle({ 'position': 'absolute', 'z-index': '999', 'margin': '0' });
+      editor.setDragMode('absolute'); // Activar modo de arrastre de Grapes
+      document.getElementById('abs-badge').classList.add('on');
+      toast('Elemento despegado. Moviendo libremente (Canva).', 'ok');
+    }
+  });
+}
+
+// Parchear la barra que sale encima de los elementos seleccionados
+function _patchToolbar(comp) {
+  const tb = comp.get('toolbar') || [];
+  if (tb.find(t => t.id === 'ms-float')) return; 
+  comp.set('toolbar', [
+    { id:'ms-float',
+      label:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 3L15 3M21 3L21 9M21 3L14 10M3 21L9 21M3 21L3 15M3 21L10 14"/></svg>',
+      attributes:{ title:'Hacer Flotante y Libre (Modo Canva)' }, command:'ms:make-float' },
+    { id:'ms-dup',
+      label:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+      attributes:{ title:'Duplicar' }, command:'core:clone' },
+    ...tb.filter(t => t.command === 'core:component-delete') // Dejar solo el de borrar
+  ]);
+}
+
+// ── Funciones de Servidor y UI (Optimizadas) ──────────────────────────────
+function bodyFromHtml(html) {
+  const m = String(html).match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  return (m ? m[1] : String(html)).trim();
+}
+
+async function loadPage(pageName) {
+  curPage = pageName;
+  document.getElementById('ed-loading').style.display = 'flex';
+  try {
+    const rRes = await fetch('/api/editor/render?page=' + pageName, { headers:{ Authorization:'Bearer '+TOKEN } });
+    const html = await rRes.text();
+    
+    const dRes = await fetch('/api/editor/design?page=' + pageName, { headers:{ Authorization:'Bearer '+TOKEN } });
+    const saved = dRes.ok ? await dRes.json() : null;
+
+    initEditor(bodyFromHtml(html), saved?.css || '');
+    if (saved && saved.gjsData && saved.gjsData !== '{}') {
+      ed.loadProjectData(JSON.parse(saved.gjsData));
+      // Re-aplicar libertad a los datos cargados
+      setTimeout(() => makeEverythingFree(ed.getWrapper()), 500);
+    }
+  } catch(e) {
+    toast('Error: ' + e.message, 'err');
+  } finally {
+    document.getElementById('ed-loading').style.display = 'none';
+  }
+}
+
+async function saveDesign() {
+  if (!ed) return;
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  
+  try {
+    const bodyHtml = ed.getHtml();
+    const css      = ed.getCss();
+    const gjsData  = JSON.stringify(ed.getProjectData());
+    
+    // Buscar Header
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = bodyHtml;
+    const headerElement = tempDiv.querySelector('#mac-global-header');
+    const globalHeaderHtml = headerElement ? headerElement.outerHTML : null;
+
+    const fullHtml = `<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>${SETTINGS.store_name||'MacStore'}</title>\n<link rel="stylesheet" href="/css/macstore.css">\n<style>${css}</style>\n</head>\n<body>${bodyHtml}</body>\n</html>`;
+    
+    const res = await fetch('/api/editor/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
+      body: JSON.stringify({ page: curPage, html: fullHtml, css, gjsData, globalHeader: globalHeaderHtml })
+    });
+    
+    if (!res.ok) throw new Error('Error guardando en BD');
+    toast('Diseño guardado ✓', 'ok');
+  } catch(e) { toast('Error: ' + e.message, 'err'); } 
+  finally { btn.disabled = false; btn.textContent = 'Guardar'; }
+}
+
+// ── Botón Global de Modo Libre ───────────────────────────────────────────
+let _absMode = false;
+function toggleAbsMode() {
+  _absMode = !_absMode;
+  if (_absMode) {
+    document.getElementById('abs-badge').classList.add('on');
+    ed.setDragMode('absolute');
+    toast('Modo Canva Global. Puedes arrastrar cosas a posiciones libres.', 'ok');
+  } else {
+    document.getElementById('abs-badge').classList.remove('on');
+    ed.setDragMode('translate');
+    toast('Modo estándar restaurado.', 'ok');
+  }
+}
+
+// Helpers...
+function reloadContent() { loadPage(curPage); }
+function togglePreview() { prevMode = !prevMode; prevMode ? ed.runCommand('preview') : ed.stopCommand('preview'); }
+function openCodeEditor() { document.getElementById('code-modal').classList.add('open'); document.getElementById('code-ta').value = ed.getHtml(); }
+function closeCodeEditor() { document.getElementById('code-modal').classList.remove('open'); }
+function applyCode() { ed.setComponents(document.getElementById('code-ta').value); setTimeout(()=>makeEverythingFree(ed.getWrapper()), 100); closeCodeEditor(); }
+let _tt = null;
+function toast(msg, type='ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'show ' + type;
+  clearTimeout(_tt); _tt = setTimeout(()=>el.className='',3000);
+}
+
+// Start
+loadPage('home');
+</script>
+</body>
+</html>.tip{
   position:absolute;left:46px;top:50%;transform:translateY(-50%);
   background:#333;color:#fff;padding:3px 8px;border-radius:5px;
   font-size:11px;white-space:nowrap;opacity:0;pointer-events:none;transition:.1s;z-index:999;
