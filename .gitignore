@@ -41,7 +41,6 @@ __MACOSX/
 *.swp
 
 # ── Base de datos local (contiene datos reales) ──
-macstore.db
 macstore.db-shm
 macstore.db-wal
 session-archives/
