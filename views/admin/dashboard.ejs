@@ -10,9 +10,9 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
       Editar tienda
     </a>
-    <button onclick="exportSiteAction('guardar')" class="adm-btn-s" id="saveBtn" title="Guarda el catálogo como HTML en el servidor">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      Guardar
+    <button onclick="saveToFolder()" class="adm-btn-s" id="saveBtn" title="Guarda el sitio en una carpeta local de tu Mac">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      Guardar en carpeta
     </button>
     <button onclick="exportSiteAction('publicar')" class="adm-btn-p" id="publishBtn" title="Genera ZIP listo para subir a GoDaddy">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
@@ -40,6 +40,118 @@
 <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
 <script>
+// ── IndexedDB: guardar/cargar handle de carpeta ───────────────────────────
+function idb(mode) {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('ms-export', 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore('h');
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = () => rej(r.error);
+  });
+}
+async function loadHandle() {
+  const db = await idb();
+  return new Promise(res => {
+    const tx = db.transaction('h', 'readonly');
+    const r  = tx.objectStore('h').get('folder');
+    r.onsuccess = () => res(r.result || null);
+    r.onerror   = () => res(null);
+  });
+}
+async function storeHandle(handle) {
+  const db = await idb();
+  return new Promise(res => {
+    const tx = db.transaction('h', 'readwrite');
+    tx.objectStore('h').put(handle, 'folder');
+    tx.oncomplete = res;
+  });
+}
+
+// ── Escribir archivos en la carpeta seleccionada ──────────────────────────
+async function writeFiles(dirHandle, files) {
+  for (const { path, content } of files) {
+    const parts = path.split('/');
+    let cur = dirHandle;
+    for (let i = 0; i < parts.length - 1; i++) {
+      cur = await cur.getDirectoryHandle(parts[i], { create: true });
+    }
+    const fh = await cur.getFileHandle(parts[parts.length - 1], { create: true });
+    const w  = await fh.createWritable();
+    await w.write(content);
+    await w.close();
+  }
+}
+
+// ── Guardar en carpeta ────────────────────────────────────────────────────
+async function saveToFolder() {
+  const modal   = document.getElementById('exportModal');
+  const spinner = document.getElementById('exportSpinner');
+  const iconEl  = document.getElementById('exportIcon');
+  const titleEl = document.getElementById('exportTitle');
+  const msgEl   = document.getElementById('exportMsg');
+  const closeBtn= document.getElementById('exportClose');
+  const btn     = document.getElementById('saveBtn');
+
+  spinner.style.display  = 'block';
+  iconEl.style.display   = 'none';
+  closeBtn.style.display = 'none';
+  titleEl.textContent    = 'Preparando archivos…';
+  msgEl.textContent      = 'Esto puede tardar unos segundos.';
+  modal.style.display    = 'flex';
+  btn.disabled = true;
+
+  try {
+    // 1. Siempre pedir carpeta (permite cambiarla en cada guardado)
+    titleEl.textContent = 'Selecciona una carpeta…';
+    msgEl.textContent   = 'Elige dónde guardar el sitio.';
+    let dirHandle;
+    try {
+      dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      await storeHandle(dirHandle);
+    } catch(e) {
+      if (e.name === 'AbortError') { modal.style.display = 'none'; btn.disabled = false; return; }
+      throw e;
+    }
+
+    // 2. Generar archivos en el servidor
+    titleEl.textContent = 'Generando sitio estático…';
+    const resp = await fetch('/api/export/bundle', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer <%=token%>' }
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Error al generar');
+
+    // 3. Escribir en la carpeta
+    titleEl.textContent = `Guardando ${data.files.length} archivos…`;
+    await writeFiles(dirHandle, data.files);
+
+    spinner.style.display = 'none';
+    iconEl.style.display  = 'block';
+    iconEl.textContent    = '✅';
+    titleEl.textContent   = '¡Guardado en tu carpeta!';
+    msgEl.innerHTML = `<strong>${data.stats.products} productos</strong> · <strong>${data.stats.categories} categorías</strong><br>
+      <strong>${data.stats.pages} páginas HTML</strong> guardadas en:<br>
+      <code style="font-size:11px;background:#f5f5f7;padding:3px 8px;border-radius:6px;display:inline-block;margin-top:6px">${dirHandle.name}/</code><br><br>
+      <small style="color:#86868b">Próxima vez se guardará aquí automáticamente.</small>`;
+    closeBtn.style.display = 'inline-block';
+  } catch(e) {
+    if (e.name === 'AbortError') { modal.style.display = 'none'; return; }
+    spinner.style.display = 'none';
+    iconEl.style.display  = 'block';
+    iconEl.textContent    = '❌';
+    titleEl.textContent   = 'Error';
+    msgEl.textContent     = e.message;
+    closeBtn.style.display = 'inline-block';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function openExportFolder() {
+  await fetch('/api/export/open-folder', { method:'POST', headers:{'Authorization':'Bearer <%=token%>'} });
+}
+
 async function bumpVersion(){
   const btn = document.getElementById('bumpBtn');
   btn.disabled = true; btn.textContent = 'Actualizando…';
@@ -116,13 +228,16 @@ async function exportSiteAction(mode) {
 
       spinner.style.display  = 'none';
       iconEl.style.display   = 'block';
-      iconEl.textContent     = '💾';
-      titleEl.textContent    = 'Sitio guardado';
+      iconEl.textContent     = '📁';
+      titleEl.textContent    = 'Sitio guardado en carpeta';
       msgEl.innerHTML        = `
         <strong>${data.stats.products} productos</strong> y
         <strong>${data.stats.categories} categorías</strong> exportados.<br>
-        <strong>${data.stats.pages} páginas HTML</strong> generadas en el servidor.<br><br>
-        Cuando estés listo, usa <em>Publicar para GoDaddy</em> para descargarlo como ZIP.`;
+        <strong>${data.stats.pages} páginas HTML</strong> generadas.<br><br>
+        <code style="font-size:11px;background:#f5f5f7;padding:4px 8px;border-radius:6px;display:block;word-break:break-all;margin-bottom:12px">${data.folder}</code>
+        <button onclick="openExportFolder()" style="background:#1d1d1f;color:#fff;border:none;padding:8px 20px;border-radius:980px;font-size:13px;font-weight:600;cursor:pointer">
+          Abrir carpeta en Finder
+        </button>`;
       closeBtn.style.display = 'inline-block';
     }
   } catch(e) {

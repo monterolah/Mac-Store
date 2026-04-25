@@ -151,12 +151,14 @@ router.get('/asistente', requireAdmin, (req, res) => {
 
 // ── EDITOR VISUAL ─────────────────────────────────────────────────────────
 router.get('/editor', requireAdmin, (req, res) => {
-  const admin      = req.admin || { name:'Admin', email:'' };
-  const settings   = getSiteData();
-  const categories = getCategories();
-  const products   = getAllProducts().filter(p => p.active !== false && p.slug)
-                       .sort((a,b) => (Number(a.sort_order)||0) - (Number(b.sort_order)||0));
-  res.render('admin/editor', { title:'Editor de Tienda — Admin', settings, categories, products, announcements:[], token: req.session.adminToken, admin });
+  try {
+    const admin      = req.admin || { name:'Admin', email:'' };
+    const settings   = getSiteData();
+    const categories = getCategories();
+    const products   = getAllProducts().filter(p => p.active !== false && p.slug)
+                         .sort((a,b) => (Number(a.sort_order)||0) - (Number(b.sort_order)||0));
+    res.render('admin/editor', { title:'Editor de Tienda — Admin', settings, categories, products, announcements:[], token: req.session.adminToken, admin });
+  } catch(e) { console.error('Editor route error:', e.message); res.status(500).send('Error al cargar el editor: ' + e.message); }
 });
 
 // ── CONFIGURACIÓN ─────────────────────────────────────────────────────────

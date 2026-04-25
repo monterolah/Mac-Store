@@ -14,6 +14,7 @@ const { execSync } = require('child_process');
 const {
   getSettings, getAllProducts, getAllCategories, getAllBanners, getAllAnnouncements, getPageDesign,
 } = require('../db/sqlite');
+const { patchSavedHtml } = require('./htmlPatch');
 
 const VIEWS_DIR   = path.join(__dirname, '../views');
 const PUBLIC_DIR  = path.join(__dirname, '../public');
@@ -115,12 +116,12 @@ async function exportSite(label) {
     vendorMode: false,
   };
 
-  /* Usa el HTML guardado por el editor si existe (igual que "ver tienda").
-     Si no hay diseño guardado, renderiza desde la plantilla EJS. */
+  /* Usa HTML guardado del editor (con parche de datos frescos) si existe,
+     si no, renderiza EJS fresco con el CSS del editor. */
   async function getPageHtml(pageName, ejsTemplate, ejsData, depth) {
     const saved = getPageDesign(pageName);
     if (saved && saved.html && saved.html.trim()) {
-      return rewriteLinks(saved.html, depth);
+      return rewriteLinks(patchSavedHtml(pageName, saved.html), depth);
     }
     const editorCss = (saved && saved.css) ? saved.css : '';
     return renderPage(ejsTemplate, { ...ejsData, editorCss }, depth);
@@ -146,8 +147,7 @@ async function exportSite(label) {
     const related = products
       .filter(x => x.id !== p.id && (x.cat_slug === p.cat_slug || x.category === p.category))
       .slice(0, 4);
-    // Para productos individuales siempre renderiza EJS (cada uno es único)
-    const html = await renderPage('product.ejs', {
+    const html = await getPageHtml('product-' + p.slug, 'product.ejs', {
       ...common, product: p, related,
       settings: { ...settings, show_admin_icon: false }, title: p.name,
     }, 1);
@@ -161,7 +161,7 @@ async function exportSite(label) {
     const catProducts = products.filter(
       x => x.cat_slug === c.slug || x.category === c.slug || x.category === c.name
     );
-    const html = await renderPage('category.ejs', {
+    const html = await getPageHtml('category-' + c.slug, 'category.ejs', {
       ...common, category: c, products: catProducts, title: c.name,
     }, 1);
     fs.writeFileSync(path.join(outDir,    'categoria', `${c.slug}.html`), html);

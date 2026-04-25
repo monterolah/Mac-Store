@@ -356,6 +356,9 @@ function insertAdmin(data) {
 function getPageDesign(pageName) {
   return dbGet('SELECT * FROM page_designs WHERE page_name = ?', [pageName]);
 }
+function getAllPageDesigns() {
+  try { return getDB().prepare('SELECT page_name, html, css, gjs_data FROM page_designs').all(); } catch { return []; }
+}
 function clearPageDesignHtml() {
   try { dbRun("UPDATE page_designs SET html = ''"); } catch(e) {}
 }
@@ -433,7 +436,7 @@ module.exports = {
   // Admins
   getAdminByEmail, insertAdmin,
   // Page designs
-  getPageDesign, savePageDesign, clearPageDesignHtml,
+  getPageDesign, getAllPageDesigns, savePageDesign, clearPageDesignHtml,
   // Ramiro
   getRamiroMemory, setRamiroMemory, getTranscripts, insertTranscript,
   // Raw helpers

@@ -12,6 +12,8 @@ const { requireAdminAPI }    = require('../middleware/auth');
 const { clearCache }         = require('../utils/cache');
 const { importCatalogFromWorkbook, importInventoryWorkbook } = require('../utils/catalogImport');
 const { exportSite, createZip } = require('../utils/staticExport');
+const { deployToGodaddy }       = require('../utils/ftpDeploy');
+const { patchSavedHtml, extractLogoStyle } = require('../utils/htmlPatch');
 
 const {
   getSettings, setSettings,
@@ -22,7 +24,7 @@ const {
   getAllPaymentMethods, insertPaymentMethod, updatePaymentMethod, deletePaymentMethod,
   getAllQuotations, getQuotationById, insertQuotation, deleteQuotation,
   getAllInventoryEntries, getInventoryEntryById, updateInventoryEntry,
-  getAdminByEmail, getPageDesign, savePageDesign, clearPageDesignHtml,
+  getAdminByEmail, getPageDesign, savePageDesign, getAllPageDesigns,
   dbGet,
 } = require('../db/sqlite');
 
@@ -31,7 +33,49 @@ const ppath = require('path');
 
 const router = express.Router();
 
-// ── Invalidar caché tras cambios de administrador ─────────────────────────
+// Aplica patchSavedHtml a todas las páginas guardadas y actualiza el DB
+function persistPatches() {
+  try {
+    const designs = getAllPageDesigns();
+    const allActive = getAllProducts({ active: true });
+    const allActiveSlugs = allActive.map(p => p.slug).filter(Boolean);
+
+    for (const d of designs) {
+      if (!d.html || !d.html.trim()) continue;
+      try {
+        // Para páginas de listado (no producto individual): si falta algún producto
+        // activo (su tarjeta fue eliminada por código anterior), limpiar el HTML
+        // guardado para que la próxima visita regenere desde EJS con todos los productos.
+        if (!d.page_name.startsWith('product-')) {
+          let expected;
+          if (d.page_name === 'catalog' || d.page_name === 'home') {
+            expected = allActiveSlugs;
+          } else if (d.page_name.startsWith('category-')) {
+            const catSlug = d.page_name.slice(9);
+            expected = allActive
+              .filter(p => p.category === catSlug || p.cat_slug === catSlug)
+              .map(p => p.slug).filter(Boolean);
+          } else {
+            expected = [];
+          }
+          const missing = expected.filter(slug => !d.html.includes('/producto/' + slug + '"'));
+          if (missing.length > 0) {
+            savePageDesign(d.page_name, '', d.css || '', d.gjs_data || '{}');
+            continue;
+          }
+        }
+        const patched = patchSavedHtml(d.page_name, d.html);
+        savePageDesign(d.page_name, patched, d.css || '', d.gjs_data || '{}');
+      } catch(e) {
+        console.warn('[persistPatches] skip', d.page_name, e.message);
+      }
+    }
+  } catch(e) {
+    console.error('[persistPatches] ERROR', e.message);
+  }
+}
+
+// ── Invalidar caché y re-parchear tras cambios de administrador ───────────
 router.use((req, res, next) => {
   if (['POST','PUT','DELETE','PATCH'].includes(req.method)) {
     res.on('finish', () => {
@@ -40,7 +84,7 @@ router.use((req, res, next) => {
           !req.originalUrl.includes('/upload') &&
           !req.originalUrl.includes('/editor/')) {
         clearCache();
-        clearPageDesignHtml();
+        setImmediate(persistPatches);
       }
     });
   }
@@ -701,17 +745,37 @@ async function renderPageForEditor(pageName) {
   throw new Error('Página no válida: ' + pageName);
 }
 
+async function rerenderSavedPages() {
+  try {
+    const designs = getAllPageDesigns();
+    for (const d of designs) {
+      if (!d.html || !d.html.trim()) continue;
+      try {
+        const freshHtml = await renderPageForEditor(d.page_name);
+        savePageDesign(d.page_name, freshHtml, d.css || '', d.gjs_data || '{}');
+      } catch (e) {
+        console.warn('[rerenderSavedPages] skip', d.page_name, e.message);
+      }
+    }
+  } catch (e) {
+    console.error('[rerenderSavedPages] ERROR', e.message);
+  }
+}
+
 router.get('/editor/render', requireAdminAPI, async (req, res) => {
   try {
     const html = await renderPageForEditor(req.query.page || 'home');
     res.send(html);
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { console.error('[editor/render] ERROR:', e.message, e.stack?.split('\n')[1]); res.status(500).json({ error: e.message }); }
 });
 
 router.get('/editor/design', requireAdminAPI, (req, res) => {
   try {
-    const d = getPageDesign(req.query.page || 'home');
-    res.json(d ? { html: d.html||'', css: d.css||'', gjsData: d.gjs_data||'{}', updatedAt: d.updatedAt } : null);
+    const pageName = req.query.page || 'home';
+    const d = getPageDesign(pageName);
+    if (!d) return res.json(null);
+    const html = d.html ? patchSavedHtml(pageName, d.html) : '';
+    res.json({ html, css: d.css||'', gjsData: d.gjs_data||'{}', updatedAt: d.updatedAt });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -733,33 +797,142 @@ router.post('/editor/save', requireAdminAPI, (req, res) => {
   try {
     const { page, gjsData } = req.body;
     if (!page) return res.status(400).json({ error:'Falta page' });
-    const cleanCss  = stripBadHeroCss(req.body.css  || '');
+    const cleanCss  = stripBadHeroCss(req.body.css || '');
     const cleanHtml = (req.body.html || '').replace(/<style[^>]*>([\s\S]*?)<\/style>/gi,
       (m, s) => m.replace(s, stripBadHeroCss(s)));
     savePageDesign(page, cleanHtml, cleanCss, gjsData||'{}');
     clearCache();
+    // Sincronizar tamaño del logo a todas las páginas guardadas
+    const logoStyle = extractLogoStyle(cleanHtml);
+    if (logoStyle) {
+      setSettings({ global_logo_style: logoStyle });
+      setImmediate(persistPatches);
+    }
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+router.post('/editor/save-all', requireAdminAPI, async (req, res) => {
+  try {
+    // Páginas base siempre incluidas
+    const pages = new Set(['home', 'catalog']);
+    // Todas las categorías activas
+    getAllCategories({ active: true }).forEach(c => { if (c.slug) pages.add('category-' + c.slug); });
+    // Todos los productos activos
+    getAllProducts({ active: true }).forEach(p => { if (p.slug) pages.add('product-' + p.slug); });
+
+    const saved = [], errors = [];
+    for (const pageName of pages) {
+      try {
+        const existing = getPageDesign(pageName);
+        let finalHtml;
+        if (existing?.html?.trim()) {
+          // Preservar diseño del editor — solo re-parchear datos dinámicos
+          finalHtml = patchSavedHtml(pageName, existing.html);
+        } else {
+          // Sin diseño guardado: inicializar desde EJS
+          finalHtml = await renderPageForEditor(pageName);
+        }
+        const cleanHtml = (finalHtml||'').replace(/<style[^>]*>([\s\S]*?)<\/style>/gi,
+          (m, s) => m.replace(s, stripBadHeroCss(s)));
+        savePageDesign(pageName, cleanHtml, stripBadHeroCss(existing?.css||''), existing?.gjs_data||'{}');
+        saved.push(pageName);
+      } catch(e) { errors.push({ page: pageName, error: e.message }); }
+    }
+    clearCache();
+    res.json({ ok: true, saved, errors });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── CSS GLOBAL ───────────────────────────────────────────────────────────
+router.get('/editor/global-css', requireAdminAPI, (_req, res) => {
+  try {
+    res.json({ css: getSettings().global_css || '' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/editor/global-css', requireAdminAPI, (req, res) => {
+  try {
+    setSettings({ global_css: String(req.body.css || '') });
+    setImmediate(persistPatches);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── EXPORTAR Y PUBLICAR EN GODADDY ───────────────────────────────────────
+router.get('/deploy', requireAdminAPI, async (req, res) => {
+  // Streaming SSE para mostrar progreso en tiempo real
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  try {
+    send({ type: 'step', msg: 'Generando archivos estáticos...' });
+    await exportSite();
+
+    send({ type: 'step', msg: 'Conectando con GoDaddy por FTP...' });
+    const result = await deployToGodaddy((evt) => {
+      if (evt.type === 'connected') send({ type: 'step', msg: `Subiendo ${evt.total} archivo(s) nuevos o modificados...` });
+      if (evt.type === 'progress') send({ type: 'progress', uploaded: evt.uploaded, total: evt.total, file: evt.file });
+    });
+
+    send({ type: 'done', uploaded: result.uploaded, skipped: result.skipped, total: result.total });
+  } catch(e) {
+    console.error('[deploy]', e.message);
+    send({ type: 'error', msg: e.message });
+  } finally {
+    res.end();
+  }
+});
+
 // ── EXPORTAR SITIO ESTÁTICO ───────────────────────────────────────────────
+const LATEST_DIR = require('path').join(__dirname, '../exports/latest');
+
 router.post('/export', requireAdminAPI, async (req, res) => {
-  const mode = (req.query.mode||req.body.mode||'guardar').toLowerCase();
+  const mode = (req.query.mode || req.body.mode || 'guardar').toLowerCase();
   try {
     const { outDir, stats } = await exportSite();
-    if (mode==='publicar') {
+    if (mode === 'publicar') {
       const zipPath = `${outDir}.zip`;
       createZip(outDir, zipPath);
       const zipName = `macstore-${stats.timestamp}.zip`;
-      res.setHeader('Content-Type','application/zip');
-      res.setHeader('Content-Disposition',`attachment; filename="${zipName}"`);
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
       const stream = fs.createReadStream(zipPath);
       stream.pipe(res);
-      stream.on('end', () => { try{fs.unlinkSync(zipPath);}catch{} });
+      stream.on('end', () => { try { fs.unlinkSync(zipPath); } catch {} });
     } else {
-      res.json({ ok:true, message:'Sitio guardado correctamente', stats });
+      res.json({ ok: true, message: 'Sitio guardado correctamente', stats, folder: LATEST_DIR });
     }
-  } catch(e) { console.error('[export]',e); res.status(500).json({ error:e.message }); }
+  } catch(e) { console.error('[export]', e); res.status(500).json({ error: e.message }); }
+});
+
+router.post('/export/open-folder', requireAdminAPI, (req, res) => {
+  try {
+    require('child_process').exec(`open "${LATEST_DIR}"`);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/export/bundle', requireAdminAPI, async (req, res) => {
+  try {
+    const { latestDir, stats } = await exportSite();
+    const files = [];
+    function walk(dir, rel) {
+      for (const name of fs.readdirSync(dir)) {
+        if (name.startsWith('.')) continue;
+        const full = require('path').join(dir, name);
+        const relPath = rel ? rel + '/' + name : name;
+        if (fs.statSync(full).isDirectory()) { walk(full, relPath); }
+        else { files.push({ path: relPath, content: fs.readFileSync(full, 'utf8') }); }
+      }
+    }
+    walk(latestDir, '');
+    res.json({ ok: true, stats, files });
+  } catch(e) { console.error('[bundle]', e); res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

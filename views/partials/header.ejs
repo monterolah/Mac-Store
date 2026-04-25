@@ -7,6 +7,7 @@
 <meta name="description" content="<%=(typeof description!=='undefined'&&description)?description:(settings.store_tagline||'')%>">
 <link rel="stylesheet" href="/css/macstore.css">
 <% if(typeof editorCss !== 'undefined' && editorCss){ %><style><%- editorCss %></style><% } %>
+<% if(settings && settings.global_css){ %><style id="ms-global-css"><%- settings.global_css %></style><% } %>
 <script src="/js/protect.js"></script>
 </head>
 <body>

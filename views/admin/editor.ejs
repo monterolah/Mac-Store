@@ -169,6 +169,30 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 .cbtn-cancel{background:#2c2c2e;color:#ccc}.cbtn-cancel:hover{background:#3a3a3c}
 .cbtn-apply{background:#0071e3;color:#fff}.cbtn-apply:hover{background:#0077ed}
 
+/* ── Global CSS Modal ───────────────────── */
+#global-css-modal{
+  position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99998;
+  display:none;align-items:center;justify-content:center;padding:12px;
+}
+#global-css-modal.open{display:flex}
+#gcss-box{
+  background:#1d1d1f;border-radius:12px;display:flex;flex-direction:column;
+  width:100%;max-width:760px;max-height:80vh;overflow:hidden;border:1px solid #333;
+}
+#gcss-head{
+  display:flex;align-items:center;gap:10px;padding:12px 18px;
+  border-bottom:1px solid #2c2c2e;flex-shrink:0;
+}
+#gcss-ta{
+  flex:1;background:#111;color:#e8e8e8;border:none;outline:none;
+  font-family:'SF Mono',Menlo,Monaco,'Courier New',monospace;font-size:13px;
+  line-height:1.6;padding:16px;resize:none;tab-size:2;min-height:280px;
+}
+#gcss-foot{
+  display:flex;align-items:center;gap:8px;padding:10px 14px;
+  border-top:1px solid #2c2c2e;flex-shrink:0;background:#1d1d1f;
+}
+
 /* ── Abs drag mode indicator ─────────────── */
 #abs-badge{
   display:none;position:fixed;top:56px;left:50%;transform:translateX(-50%);
@@ -199,7 +223,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
       <% }) %>
     </optgroup>
     <optgroup label="Productos">
-      <% (products||[]).forEach(p=>{ %>
+      <% (typeof products!=='undefined'?products:[]).forEach(p=>{ %>
       <option value="product-<%=p.slug%>"><%=p.name%></option>
       <% }) %>
     </optgroup>
@@ -227,6 +251,10 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
     Código
   </button>
+  <button class="tbtn tbtn-ghost" id="btn-global-css" onclick="openGlobalCss()" title="CSS Global — aplica a todas las páginas simultáneamente">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    Global
+  </button>
   <button class="tbtn tbtn-ghost" id="btn-abs" onclick="toggleAbsMode()" title="Modo posición libre (arrastra a cualquier lugar)">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
     Libre
@@ -235,9 +263,17 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
     Vista previa
   </button>
-  <button class="tbtn tbtn-ghost" id="btn-reload" onclick="reloadContent()" title="Recargar el contenido real de la tienda (categorías, productos, logo) en el canvas">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-    Recargar
+  <button class="tbtn tbtn-ghost" id="btn-view" onclick="openInStore()" title="Ver página en la tienda">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+    Ver tienda
+  </button>
+  <button class="tbtn" id="btn-deploy" onclick="deployToGodaddy()" title="Exportar y publicar en GoDaddy vía FTP" style="background:#005c9e;color:#fff;flex-shrink:0">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+    Publicar GoDaddy
+  </button>
+  <button class="tbtn tbtn-ghost" id="btn-save-all" onclick="saveAll()" title="Actualiza datos (precios, categorías) en todas las páginas sin borrar tus diseños">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Actualizar datos
   </button>
   <button class="tbtn tbtn-green" id="btn-save" onclick="saveDesign()">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -324,6 +360,23 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
       <span id="code-hint">Edita el HTML o CSS y presiona Aplicar</span>
       <button class="cbtn cbtn-cancel" onclick="closeCodeEditor()">Cancelar</button>
       <button class="cbtn cbtn-apply"  onclick="applyCode()">Aplicar ✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- Global CSS Modal -->
+<div id="global-css-modal">
+  <div id="gcss-box">
+    <div id="gcss-head">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0071e3" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <span style="font-size:13px;font-weight:600;color:#fff">CSS Global</span>
+      <span style="font-size:12px;color:#555">— Aplica en todas las páginas del sitio automáticamente</span>
+    </div>
+    <textarea id="gcss-ta" spellcheck="false" autocomplete="off" placeholder="/* Ejemplo: cambiar el tamaño del logo en todo el sitio */&#10;.ms-logo img { width: 120px !important; }&#10;&#10;/* Cambiar fuente global */&#10;body { font-family: 'Georgia', serif; }"></textarea>
+    <div id="gcss-foot">
+      <span style="flex:1;font-size:11px;color:#555">El CSS se inyecta en el &lt;head&gt; de cada página al guardar. Vacío = sin CSS global.</span>
+      <button class="cbtn cbtn-cancel" onclick="closeGlobalCss()">Cancelar</button>
+      <button class="cbtn cbtn-apply" id="btn-save-gcss" onclick="saveGlobalCss()">Aplicar a todas las páginas ✓</button>
     </div>
   </div>
 </div>
@@ -632,26 +685,20 @@ async function loadPage(pageName) {
   const ld  = document.getElementById('ed-loading');
   const msg = document.getElementById('ed-msg');
   ld.style.display = 'flex';
-  msg.textContent = 'Cargando ' + { home:'portada', catalog:'catálogo', product:'producto', category:'categoría' }[pageName] + '...';
+  msg.textContent = 'Cargando...';
 
   try {
     const dRes = await fetch('/api/editor/design?page=' + pageName, { headers:{ Authorization:'Bearer '+TOKEN } });
     const saved = dRes.ok ? await dRes.json() : null;
 
-    if (saved && saved.gjsData && saved.gjsData !== '{}' && saved.gjsData !== 'null') {
-      initEditor('', '');
-      ed.loadProjectData(JSON.parse(saved.gjsData));
-      setupEditorBehaviors();
-      return;
-    }
-
-    if (saved && saved.html) {
+    if (saved && saved.html && saved.html.trim()) {
+      // Usar el HTML guardado (ya fue re-renderizado con datos frescos tras cada cambio del admin)
       initEditor(bodyFromHtml(saved.html), saved.css || '');
-      // setupEditorBehaviors ya se llama dentro de initEditor
       return;
     }
 
-    msg.textContent = 'Renderizando página...';
+    // Sin diseño guardado: renderizar fresco desde EJS
+    msg.textContent = 'Renderizando...';
     const rRes = await fetch('/api/editor/render?page=' + pageName, { headers:{ Authorization:'Bearer '+TOKEN } });
     if (!rRes.ok) throw new Error('Error al renderizar: ' + rRes.status);
     const html = await rRes.text();
@@ -665,14 +712,52 @@ async function loadPage(pageName) {
   }
 }
 
+// ── URL pública para cada página ──────────────────────────────────────────
+function publicUrl(pageName) {
+  if (!pageName || pageName === 'home')    return '/';
+  if (pageName === 'catalog')              return '/productos';
+  if (pageName.startsWith('category-'))   return '/categoria/' + pageName.slice(9);
+  if (pageName.startsWith('product-'))    return '/producto/'  + pageName.slice(8);
+  return '/';
+}
+
+let _storeTab = null;
+
+function openInStore() {
+  const url = publicUrl(curPage) + '?t=' + Date.now();
+  if (_storeTab && !_storeTab.closed) { _storeTab.location.replace(url); _storeTab.focus(); }
+  else { _storeTab = window.open(url, 'macstore_preview'); }
+}
+
 // ── Save ──────────────────────────────────────────────────────────────────
+// Extrae inline styles de elementos con clases del template y los convierte a CSS
+function inlineStylesAsCss(html) {
+  try {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    let extra = '';
+    tmp.querySelectorAll('[style]').forEach(el => {
+      const style = el.getAttribute('style');
+      if (!style) return;
+      // Solo usa clases que no sean de GrapesJS (gjs-, selected, etc.)
+      const classes = Array.from(el.classList)
+        .filter(c => c && !c.startsWith('gjs') && c !== 'selected' && c.length > 1);
+      if (!classes.length) return;
+      const selector = classes.map(c => '.' + CSS.escape(c)).join('');
+      extra += `${selector} { ${style} }\n`;
+    });
+    return extra;
+  } catch { return ''; }
+}
+
 async function saveDesign() {
   if (!ed) return;
   const btn = document.getElementById('btn-save');
   btn.disabled = true; btn.textContent = 'Guardando...';
   try {
-    const bodyHtml = ed.getHtml();
-    const css      = ed.getCss();
+    const bodyHtml  = ed.getHtml();
+    const inlineCss = inlineStylesAsCss(bodyHtml);
+    const css       = ed.getCss() + (inlineCss ? '\n/* inline overrides */\n' + inlineCss : '');
     const gjsData  = JSON.stringify(ed.getProjectData());
     const fullHtml = `<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>${SETTINGS.store_name||'MacStore'}</title>\n<link rel="stylesheet" href="/css/macstore.css">\n<style>${css}</style>\n</head>\n<body>${bodyHtml}</body>\n</html>`;
     const res = await fetch('/api/editor/save', {
@@ -682,11 +767,69 @@ async function saveDesign() {
     });
     if (!res.ok) throw new Error((await res.json()).error || 'Error');
     toast('Guardado ✓', 'ok');
+    if (_storeTab && !_storeTab.closed) { _storeTab.location.replace(publicUrl(curPage) + '?t=' + Date.now()); }
   } catch(e) {
     toast('Error: ' + e.message, 'err');
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Guardar';
+  }
+}
+
+// ── Publicar en GoDaddy ───────────────────────────────────────────────────
+async function deployToGodaddy() {
+  const btn = document.getElementById('btn-deploy');
+  btn.disabled = true; btn.textContent = 'Publicando...';
+  toast('Iniciando publicación en GoDaddy...', 'ok');
+  try {
+    const es = new EventSource('/api/deploy');
+    es.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+      if (d.type === 'step')     toast(d.msg, 'ok');
+      if (d.type === 'progress') btn.textContent = `Subiendo ${d.uploaded}/${d.total}...`;
+      if (d.type === 'done') {
+        es.close();
+        toast(`✓ Publicado — ${d.uploaded} archivo(s) subidos, ${d.skipped} sin cambios`, 'ok');
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg> Publicar GoDaddy';
+      }
+      if (d.type === 'error') {
+        es.close();
+        toast('Error: ' + d.msg, 'err');
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg> Publicar GoDaddy';
+      }
+    };
+    es.onerror = () => { es.close(); toast('Error de conexión con el servidor', 'err'); btn.disabled = false; };
+  } catch(e) {
+    toast('Error: ' + e.message, 'err');
+    btn.disabled = false;
+  }
+}
+
+// ── Guardar todo ──────────────────────────────────────────────────────────
+async function saveAll() {
+  const btn = document.getElementById('btn-save-all');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  try {
+    // Primero guardar la página actual con el estado de GrapesJS
+    await saveDesign();
+    // Luego renderizar y guardar todas las páginas en el servidor
+    const res = await fetch('/api/editor/save-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
+      body: JSON.stringify({})
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'Error');
+    const data = await res.json();
+    const n = data.saved?.length || 0;
+    toast(`Todo guardado ✓ — ${n} página${n !== 1 ? 's' : ''} actualizadas`, 'ok');
+    if (_storeTab && !_storeTab.closed) _storeTab.location.reload();
+  } catch(e) {
+    toast('Error: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Guardar todo';
   }
 }
 
@@ -857,6 +1000,47 @@ document.addEventListener('keydown', e => {
 });
 
 window.onbeforeunload = () => ed ? '' : null;
+
+// ── CSS Global ────────────────────────────────────────────────────────────
+async function openGlobalCss() {
+  try {
+    const res  = await fetch('/api/editor/global-css', { headers:{ Authorization:'Bearer '+TOKEN } });
+    const data = await res.json();
+    document.getElementById('gcss-ta').value = data.css || '';
+  } catch(e) { /* continuar vacío */ }
+  document.getElementById('global-css-modal').classList.add('open');
+  setTimeout(() => document.getElementById('gcss-ta').focus(), 80);
+}
+
+function closeGlobalCss() {
+  document.getElementById('global-css-modal').classList.remove('open');
+}
+
+async function saveGlobalCss() {
+  const css = document.getElementById('gcss-ta').value;
+  const btn = document.getElementById('btn-save-gcss');
+  btn.disabled = true; btn.textContent = 'Aplicando...';
+  try {
+    const res = await fetch('/api/editor/global-css', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+TOKEN },
+      body: JSON.stringify({ css })
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'Error');
+    closeGlobalCss();
+    toast('CSS Global aplicado a todas las páginas ✓', 'ok');
+  } catch(e) {
+    toast('Error: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Aplicar a todas las páginas ✓';
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('global-css-modal').classList.contains('open')) {
+    closeGlobalCss();
+  }
+});
 
 // ── Start ─────────────────────────────────────────────────────────────────
 loadPage('home');
