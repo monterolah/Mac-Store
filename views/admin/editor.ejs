@@ -7,12 +7,17 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/grapesjs@0.21.13/dist/css/grapes.min.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a1a}
+/* Fondo más oscuro para que resalte el cristal esmerilado */
+html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#000}
 
 /* ── TOP BAR ─────────────────────────────────── */
 #ed-bar{
   position:fixed;top:0;left:0;right:0;height:50px;
-  background:#1d1d1f;border-bottom:1px solid #333;
+  /* Efecto Glassmorphism */
+  background: rgba(29, 29, 31, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom:1px solid rgba(255, 255, 255, 0.08) !important;
   display:flex;align-items:center;gap:8px;padding:0 14px;z-index:9999;
 }
 #ed-bar a.back{color:#86868b;text-decoration:none;font-size:13px;display:flex;align-items:center;gap:4px;flex-shrink:0}
@@ -42,7 +47,12 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 
 /* Left sidebar */
 #ed-left{
-  width:50px;background:#1d1d1f;border-right:1px solid #333;
+  width:50px;
+  /* Efecto Glassmorphism */
+  background: rgba(29, 29, 31, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-right:1px solid rgba(255, 255, 255, 0.08) !important;
   display:flex;flex-direction:column;align-items:center;
   padding:8px 0;gap:4px;flex-shrink:0;
 }
@@ -67,10 +77,20 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 
 /* Right panel */
 #ed-right{
-  width:256px;background:#1d1d1f;border-left:1px solid #333;
+  width:256px;
+  /* Efecto Glassmorphism */
+  background: rgba(29, 29, 31, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-left:1px solid rgba(255, 255, 255, 0.08) !important;
   display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;
 }
-.rtabs{display:flex;border-bottom:1px solid #2c2c2e;flex-shrink:0}
+.rtabs{
+  display:flex;
+  border-bottom:1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(29, 29, 31, 0.72) !important;
+  flex-shrink:0;
+}
 .rtab{
   flex:1;padding:9px 4px;text-align:center;font-size:11px;font-weight:500;
   color:#86868b;background:none;border:none;cursor:pointer;
@@ -79,6 +99,12 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 .rtab.on{color:#fff;border-bottom-color:#0071e3}
 .rpanel{flex:1;overflow-y:auto;display:none}
 .rpanel.on{display:block}
+
+/* Scrollbars invisibles estilo Mac */
+.rpanel::-webkit-scrollbar, #code-ta::-webkit-scrollbar { width: 6px; }
+.rpanel::-webkit-scrollbar-track, #code-ta::-webkit-scrollbar-track { background: transparent; }
+.rpanel::-webkit-scrollbar-thumb, #code-ta::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
+.rpanel:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.4); }
 
 /* GrapesJS tweaks */
 .gjs-editor,.gjs-editor-cont{height:100%!important}
@@ -91,12 +117,12 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 .gjs-sm-sector-title,.gjs-sm-title,.gjs-sm-field,.gjs-sm-select,.gjs-sm-input{background:#2c2c2e!important;color:#ccc!important}
 .gjs-sm-sector-title{padding:8px 10px!important;font-size:11px!important;text-transform:uppercase!important;letter-spacing:.05em!important;color:#86868b!important}
 .gjs-sm-property{border-bottom:1px solid #333!important}
-.gjs-pn-panel,.gjs-block-categories,.gjs-block-category{background:#1d1d1f!important;color:#ccc!important}
+.gjs-pn-panel,.gjs-block-categories,.gjs-block-category{background:transparent!important;color:#ccc!important}
 .gjs-block{border-color:#333!important;background:#2c2c2e!important;color:#ccc!important}
 .gjs-block:hover{border-color:#0071e3!important;color:#fff!important}
 .gjs-blocks-c{padding:6px!important}
 .gjs-block-label{font-size:11px!important}
-.gjs-layer,.gjs-layer-title{background:#1d1d1f!important;color:#ccc!important;border-color:#333!important}
+.gjs-layer,.gjs-layer-title{background:transparent!important;color:#ccc!important;border-color:#333!important}
 .gjs-layer.gjs-selected{background:#2c2c2e!important}
 .gjs-field,.gjs-input-unit{background:#2c2c2e!important;color:#ccc!important;border-color:#444!important}
 .gjs-clm-tag{background:#2c2c2e!important;color:#ccc!important}
@@ -109,7 +135,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 /* Comp info bar */
 #comp-info{
   padding:5px 8px;font-size:11px;font-family:monospace;
-  color:#555;background:#1d1d1f;border-bottom:1px solid #333;
+  color:#555;background:transparent;border-bottom:1px solid rgba(255,255,255,0.08);
   min-height:22px;line-height:1.4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
 }
 /* Quick-action buttons in left bar */
@@ -159,39 +185,17 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 }
 #code-foot{
   display:flex;align-items:center;gap:8px;padding:10px 14px;
-  border-top:1px solid #2c2c2e;flex-shrink:0;background:#1d1d1f;
+  border-top:1px solid rgba(255, 255, 255, 0.08);flex-shrink:0;
+  background: rgba(29, 29, 31, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(180%);
 }
-#code-foot span{flex:1;font-size:11px;color:#555}
+#code-foot span{flex:1;font-size:11px;color:#aaa}
 .cbtn{
   padding:7px 16px;border-radius:7px;border:none;font-size:13px;
   font-weight:600;cursor:pointer;font-family:inherit;transition:.15s;
 }
 .cbtn-cancel{background:#2c2c2e;color:#ccc}.cbtn-cancel:hover{background:#3a3a3c}
 .cbtn-apply{background:#0071e3;color:#fff}.cbtn-apply:hover{background:#0077ed}
-
-/* ── Global CSS Modal ───────────────────── */
-#global-css-modal{
-  position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99998;
-  display:none;align-items:center;justify-content:center;padding:12px;
-}
-#global-css-modal.open{display:flex}
-#gcss-box{
-  background:#1d1d1f;border-radius:12px;display:flex;flex-direction:column;
-  width:100%;max-width:760px;max-height:80vh;overflow:hidden;border:1px solid #333;
-}
-#gcss-head{
-  display:flex;align-items:center;gap:10px;padding:12px 18px;
-  border-bottom:1px solid #2c2c2e;flex-shrink:0;
-}
-#gcss-ta{
-  flex:1;background:#111;color:#e8e8e8;border:none;outline:none;
-  font-family:'SF Mono',Menlo,Monaco,'Courier New',monospace;font-size:13px;
-  line-height:1.6;padding:16px;resize:none;tab-size:2;min-height:280px;
-}
-#gcss-foot{
-  display:flex;align-items:center;gap:8px;padding:10px 14px;
-  border-top:1px solid #2c2c2e;flex-shrink:0;background:#1d1d1f;
-}
 
 /* ── Abs drag mode indicator ─────────────── */
 #abs-badge{
@@ -204,7 +208,6 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 </head>
 <body>
 
-<!-- TOP BAR -->
 <div id="ed-bar">
   <a class="back" href="/admin">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
@@ -223,7 +226,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
       <% }) %>
     </optgroup>
     <optgroup label="Productos">
-      <% (typeof products!=='undefined'?products:[]).forEach(p=>{ %>
+      <% (products||[]).forEach(p=>{ %>
       <option value="product-<%=p.slug%>"><%=p.name%></option>
       <% }) %>
     </optgroup>
@@ -251,10 +254,6 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
     Código
   </button>
-  <button class="tbtn tbtn-ghost" id="btn-global-css" onclick="openGlobalCss()" title="CSS Global — aplica a todas las páginas simultáneamente">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-    Global
-  </button>
   <button class="tbtn tbtn-ghost" id="btn-abs" onclick="toggleAbsMode()" title="Modo posición libre (arrastra a cualquier lugar)">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
     Libre
@@ -263,17 +262,9 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
     Vista previa
   </button>
-  <button class="tbtn tbtn-ghost" id="btn-view" onclick="openInStore()" title="Ver página en la tienda">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-    Ver tienda
-  </button>
-  <button class="tbtn" id="btn-deploy" onclick="deployToGodaddy()" title="Exportar y publicar en GoDaddy vía FTP" style="background:#005c9e;color:#fff;flex-shrink:0">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-    Publicar GoDaddy
-  </button>
-  <button class="tbtn tbtn-ghost" id="btn-save-all" onclick="saveAll()" title="Actualiza datos (precios, categorías) en todas las páginas sin borrar tus diseños">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-    Actualizar datos
+  <button class="tbtn tbtn-ghost" id="btn-reload" onclick="reloadContent()" title="Recargar el contenido real de la tienda (categorías, productos, logo) en el canvas">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    Recargar
   </button>
   <button class="tbtn tbtn-green" id="btn-save" onclick="saveDesign()">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -281,10 +272,8 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
   </button>
 </div>
 
-<!-- MAIN -->
 <div id="ed-main">
 
-  <!-- Left toolbar -->
   <div id="ed-left">
     <button class="ltool on" id="lt-style" onclick="showPanel('style')" title="Estilos">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
@@ -313,10 +302,8 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
     </button>
   </div>
 
-  <!-- GrapesJS canvas -->
   <div id="gjs"></div>
 
-  <!-- Right panel -->
   <div id="ed-right">
     <div class="rtabs">
       <button class="rtab on" onclick="showPanel('style')">Estilo</button>
@@ -336,19 +323,15 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 
 </div>
 
-<!-- Loading -->
 <div id="ed-loading">
   <div class="spin"></div>
   <span id="ed-msg">Cargando página...</span>
 </div>
 
-<!-- Toast -->
 <div id="toast"></div>
 
-<!-- Abs mode badge -->
 <div id="abs-badge">✦ POSICIÓN LIBRE</div>
 
-<!-- Code Editor Modal -->
 <div id="code-modal">
   <div id="code-box">
     <div id="code-tabs">
@@ -360,23 +343,6 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
       <span id="code-hint">Edita el HTML o CSS y presiona Aplicar</span>
       <button class="cbtn cbtn-cancel" onclick="closeCodeEditor()">Cancelar</button>
       <button class="cbtn cbtn-apply"  onclick="applyCode()">Aplicar ✓</button>
-    </div>
-  </div>
-</div>
-
-<!-- Global CSS Modal -->
-<div id="global-css-modal">
-  <div id="gcss-box">
-    <div id="gcss-head">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0071e3" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-      <span style="font-size:13px;font-weight:600;color:#fff">CSS Global</span>
-      <span style="font-size:12px;color:#555">— Aplica en todas las páginas del sitio automáticamente</span>
-    </div>
-    <textarea id="gcss-ta" spellcheck="false" autocomplete="off" placeholder="/* Ejemplo: cambiar el tamaño del logo en todo el sitio */&#10;.ms-logo img { width: 120px !important; }&#10;&#10;/* Cambiar fuente global */&#10;body { font-family: 'Georgia', serif; }"></textarea>
-    <div id="gcss-foot">
-      <span style="flex:1;font-size:11px;color:#555">El CSS se inyecta en el &lt;head&gt; de cada página al guardar. Vacío = sin CSS global.</span>
-      <button class="cbtn cbtn-cancel" onclick="closeGlobalCss()">Cancelar</button>
-      <button class="cbtn cbtn-apply" id="btn-save-gcss" onclick="saveGlobalCss()">Aplicar a todas las páginas ✓</button>
     </div>
   </div>
 </div>
@@ -518,6 +484,49 @@ function initEditor(bodyHtml, css) {
     blockManager: {
       appendTo: '#bm-wrap',
       blocks: [
+        {
+          id: 'global-header',
+          label: 'Header Global',
+          category: 'MacStore',
+          content: `
+            <header id="mac-global-header" style="background: rgba(29, 29, 31, 0.8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; z-index: 999;">
+              
+              <a href="/" style="color: #fff; font-size: 20px; font-weight: 700; text-decoration: none; letter-spacing: -0.02em;">
+                 MacStore
+              </a>
+
+              <nav id="dynamic-category-nav" data-gjs-droppable="false" data-gjs-editable="false" style="display: flex; gap: 24px; font-size: 13px; font-weight: 400;">
+                <span style="color: #86868b; font-style: italic;">[ El menú de categorías se generará aquí en vivo ]</span>
+              </nav>
+
+              <div style="display: flex; gap: 16px; color: #fff;">
+                <a href="/cart" style="color: #fff; text-decoration: none;">🛒</a>
+              </div>
+            </header>
+          `
+        },
+        { 
+          id: 'mac-variants', 
+          label: 'Selector Capacidades', 
+          category: 'MacStore',
+          content: `
+          <div style="padding: 24px; max-width: 400px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">
+            <h3 style="font-size: 17px; font-weight: 600; margin-bottom: 16px; color: #1d1d1f;">Almacenamiento</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              
+              <div style="border: 2px solid #0071e3; border-radius: 12px; padding: 16px; cursor: pointer; text-align: center; background: #fff;">
+                <span style="display: block; font-size: 24px; font-weight: 600; color: #1d1d1f; margin-bottom: 4px;">256<small style="font-size: 14px;">GB</small></span>
+                <span style="display: block; font-size: 12px; color: #515154;">SSD</span>
+              </div>
+
+              <div style="border: 1px solid #d2d2d7; border-radius: 12px; padding: 16px; cursor: pointer; text-align: center; background: #fff; transition: border 0.2s;">
+                <span style="display: block; font-size: 24px; font-weight: 600; color: #1d1d1f; margin-bottom: 4px;">512<small style="font-size: 14px;">GB</small></span>
+                <span style="display: block; font-size: 12px; color: #515154;">+ $200.00</span>
+              </div>
+
+            </div>
+          </div>` 
+        },
         { id:'section',   label:'Sección',        category:'Diseño',
           content:'<section style="padding:60px 24px;background:#fff"><div style="max-width:1200px;margin:0 auto"><h2 style="margin-bottom:16px;font-size:28px">Título de sección</h2><p style="color:#515154;line-height:1.6">Agrega tu contenido aquí. Puedes editar el texto, colores y tamaños desde el panel de estilos.</p></div></section>' },
         { id:'hero',      label:'Hero / Banner',  category:'Diseño',
@@ -559,7 +568,7 @@ function initEditor(bodyHtml, css) {
         { id:'iframe',    label:'iFrame / Mapa',    category:'Multimedia',
           content:'<div style="padding:16px"><iframe src="https://www.google.com/maps/embed?pb=!1m14!..." style="width:100%;height:400px;border:0;border-radius:12px" allowfullscreen loading="lazy"></iframe></div>' },
         { id:'rawhtml',   label:'HTML libre',        category:'Multimedia',
-          content: { type:'text', content:'<!-- Pega aquí tu HTML personalizado -->\n<div style="padding:24px">Tu contenido</div>' } },
+          content: { type:'text', content:'\n<div style="padding:24px">Tu contenido</div>' } },
         { id:'countdown', label:'Cuenta regresiva',  category:'Multimedia',
           content:'<div style="text-align:center;padding:40px 24px;background:#1d1d1f;color:#fff;border-radius:18px"><h3 style="font-size:22px;margin-bottom:20px;font-weight:600">⏳ Oferta termina en</h3><div id="cd_'+Date.now()+'" style="display:flex;gap:20px;justify-content:center;font-size:40px;font-weight:700"><span>00<br><small style="font-size:12px;opacity:.6">Horas</small></span><span>:</span><span>00<br><small style="font-size:12px;opacity:.6">Min</small></span><span>:</span><span>00<br><small style="font-size:12px;opacity:.6">Seg</small></span></div></div>' },
         { id:'badge-strip', label:'Tira de badges', category:'Contenido',
@@ -615,7 +624,7 @@ function setupEditorBehaviors() {
     const cls = (comp.getClasses() || []).filter(Boolean).slice(0, 3);
     const clsStr = cls.length ? ' .' + cls.join(' .') : '';
     const el = document.getElementById('comp-info');
-    if (el) el.innerHTML = `<span style="color:#86868b">&lt;</span><span style="color:#56c0f2">${tag}</span><span style="color:#a8d8a8">${clsStr}</span><span style="color:#86868b">&gt;</span>`;
+    if (el) el.innerHTML = `<span style="color:#86868b"><</span><span style="color:#56c0f2">${tag}</span><span style="color:#a8d8a8">${clsStr}</span><span style="color:#86868b">></span>`;
     showPanel('style');
   });
   ed.on('component:deselected', () => {
@@ -685,20 +694,26 @@ async function loadPage(pageName) {
   const ld  = document.getElementById('ed-loading');
   const msg = document.getElementById('ed-msg');
   ld.style.display = 'flex';
-  msg.textContent = 'Cargando...';
+  msg.textContent = 'Cargando ' + { home:'portada', catalog:'catálogo', product:'producto', category:'categoría' }[pageName] + '...';
 
   try {
     const dRes = await fetch('/api/editor/design?page=' + pageName, { headers:{ Authorization:'Bearer '+TOKEN } });
     const saved = dRes.ok ? await dRes.json() : null;
 
-    if (saved && saved.html && saved.html.trim()) {
-      // Usar el HTML guardado (ya fue re-renderizado con datos frescos tras cada cambio del admin)
-      initEditor(bodyFromHtml(saved.html), saved.css || '');
+    if (saved && saved.gjsData && saved.gjsData !== '{}' && saved.gjsData !== 'null') {
+      initEditor('', '');
+      ed.loadProjectData(JSON.parse(saved.gjsData));
+      setupEditorBehaviors();
       return;
     }
 
-    // Sin diseño guardado: renderizar fresco desde EJS
-    msg.textContent = 'Renderizando...';
+    if (saved && saved.html) {
+      initEditor(bodyFromHtml(saved.html), saved.css || '');
+      // setupEditorBehaviors ya se llama dentro de initEditor
+      return;
+    }
+
+    msg.textContent = 'Renderizando página...';
     const rRes = await fetch('/api/editor/render?page=' + pageName, { headers:{ Authorization:'Bearer '+TOKEN } });
     if (!rRes.ok) throw new Error('Error al renderizar: ' + rRes.status);
     const html = await rRes.text();
@@ -712,62 +727,41 @@ async function loadPage(pageName) {
   }
 }
 
-// ── URL pública para cada página ──────────────────────────────────────────
-function publicUrl(pageName) {
-  if (!pageName || pageName === 'home')    return '/';
-  if (pageName === 'catalog')              return '/productos';
-  if (pageName.startsWith('category-'))   return '/categoria/' + pageName.slice(9);
-  if (pageName.startsWith('product-'))    return '/producto/'  + pageName.slice(8);
-  return '/';
-}
-
-let _storeTab = null;
-
-function openInStore() {
-  const url = publicUrl(curPage) + '?t=' + Date.now();
-  if (_storeTab && !_storeTab.closed) { _storeTab.location.replace(url); _storeTab.focus(); }
-  else { _storeTab = window.open(url, 'macstore_preview'); }
-}
-
-// ── Save ──────────────────────────────────────────────────────────────────
-// Extrae inline styles de elementos con clases del template y los convierte a CSS
-function inlineStylesAsCss(html) {
-  try {
-    const tmp = document.createElement('div');
-    tmp.innerHTML = html;
-    let extra = '';
-    tmp.querySelectorAll('[style]').forEach(el => {
-      const style = el.getAttribute('style');
-      if (!style) return;
-      // Solo usa clases que no sean de GrapesJS (gjs-, selected, etc.)
-      const classes = Array.from(el.classList)
-        .filter(c => c && !c.startsWith('gjs') && c !== 'selected' && c.length > 1);
-      if (!classes.length) return;
-      const selector = classes.map(c => '.' + CSS.escape(c)).join('');
-      extra += `${selector} { ${style} }\n`;
-    });
-    return extra;
-  } catch { return ''; }
-}
-
+// ── Save (Actualizado para extraer el Global Header) ──────────────────────
 async function saveDesign() {
   if (!ed) return;
   const btn = document.getElementById('btn-save');
   btn.disabled = true; btn.textContent = 'Guardando...';
+  
   try {
-    const bodyHtml  = ed.getHtml();
-    const inlineCss = inlineStylesAsCss(bodyHtml);
-    const css       = ed.getCss() + (inlineCss ? '\n/* inline overrides */\n' + inlineCss : '');
+    const bodyHtml = ed.getHtml();
+    const css      = ed.getCss();
     const gjsData  = JSON.stringify(ed.getProjectData());
+    
+    // Buscar y extraer el header global
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = bodyHtml;
+    const headerElement = tempDiv.querySelector('#mac-global-header');
+    
+    // Si encontramos el header, extraemos su código
+    const globalHeaderHtml = headerElement ? headerElement.outerHTML : null;
+
     const fullHtml = `<!DOCTYPE html>\n<html lang="es">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>${SETTINGS.store_name||'MacStore'}</title>\n<link rel="stylesheet" href="/css/macstore.css">\n<style>${css}</style>\n</head>\n<body>${bodyHtml}</body>\n</html>`;
+    
     const res = await fetch('/api/editor/save', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN},
-      body: JSON.stringify({ page:curPage, html:fullHtml, css, gjsData })
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
+      body: JSON.stringify({ 
+        page: curPage, 
+        html: fullHtml, 
+        css: css, 
+        gjsData: gjsData,
+        globalHeader: globalHeaderHtml // Se lo mandamos por separado al backend
+      })
     });
-    if (!res.ok) throw new Error((await res.json()).error || 'Error');
-    toast('Guardado ✓', 'ok');
-    if (_storeTab && !_storeTab.closed) { _storeTab.location.replace(publicUrl(curPage) + '?t=' + Date.now()); }
+    
+    if (!res.ok) throw new Error((await res.json()).error || 'Error del servidor');
+    toast('Diseño guardado ✓', 'ok');
   } catch(e) {
     toast('Error: ' + e.message, 'err');
   } finally {
@@ -776,66 +770,7 @@ async function saveDesign() {
   }
 }
 
-// ── Publicar en GoDaddy ───────────────────────────────────────────────────
-async function deployToGodaddy() {
-  const btn = document.getElementById('btn-deploy');
-  btn.disabled = true; btn.textContent = 'Publicando...';
-  toast('Iniciando publicación en GoDaddy...', 'ok');
-  try {
-    const es = new EventSource('/api/deploy');
-    es.onmessage = (e) => {
-      const d = JSON.parse(e.data);
-      if (d.type === 'step')     toast(d.msg, 'ok');
-      if (d.type === 'progress') btn.textContent = `Subiendo ${d.uploaded}/${d.total}...`;
-      if (d.type === 'done') {
-        es.close();
-        toast(`✓ Publicado — ${d.uploaded} archivo(s) subidos, ${d.skipped} sin cambios`, 'ok');
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg> Publicar GoDaddy';
-      }
-      if (d.type === 'error') {
-        es.close();
-        toast('Error: ' + d.msg, 'err');
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg> Publicar GoDaddy';
-      }
-    };
-    es.onerror = () => { es.close(); toast('Error de conexión con el servidor', 'err'); btn.disabled = false; };
-  } catch(e) {
-    toast('Error: ' + e.message, 'err');
-    btn.disabled = false;
-  }
-}
-
-// ── Guardar todo ──────────────────────────────────────────────────────────
-async function saveAll() {
-  const btn = document.getElementById('btn-save-all');
-  btn.disabled = true; btn.textContent = 'Guardando...';
-  try {
-    // Primero guardar la página actual con el estado de GrapesJS
-    await saveDesign();
-    // Luego renderizar y guardar todas las páginas en el servidor
-    const res = await fetch('/api/editor/save-all', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN },
-      body: JSON.stringify({})
-    });
-    if (!res.ok) throw new Error((await res.json()).error || 'Error');
-    const data = await res.json();
-    const n = data.saved?.length || 0;
-    toast(`Todo guardado ✓ — ${n} página${n !== 1 ? 's' : ''} actualizadas`, 'ok');
-    if (_storeTab && !_storeTab.closed) _storeTab.location.reload();
-  } catch(e) {
-    toast('Error: ' + e.message, 'err');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Guardar todo';
-  }
-}
-
 // ── Recargar contenido actual de la tienda en el canvas ───────────────────
-// NO borra cambios guardados, solo actualiza el canvas con las categorías,
-// productos y logo más recientes del admin.
 async function reloadContent() {
   const btn = document.getElementById('btn-reload');
   btn.disabled = true;
@@ -892,22 +827,36 @@ function delSelected() {
   toast('Eliminado', 'ok');
 }
 
-// ── Absolute drag mode ────────────────────────────────────────────────────
+// ── Absolute drag mode (SUPER MEJORADO ESTILO CANVA) ──────────────
 let _absMode = false;
 function toggleAbsMode() {
   _absMode = !_absMode;
   const badge = document.getElementById('abs-badge');
   const btn   = document.getElementById('btn-abs');
+  
   if (_absMode) {
     badge.classList.add('on');
     btn.style.color = '#ff9f0a';
-    ed?.setDragMode('absolute');
-    toast('Modo libre activado — arrastra los bloques a cualquier posición', 'ok');
+    
+    // 1. Activar el modo de arrastre libre de GrapesJS
+    ed.setDragMode('absolute');
+    
+    // 2. Hacer que el elemento seleccionado actualmente se vuelva "Libre"
+    const selected = ed.getSelected();
+    if (selected && selected.get('tagName') !== 'body') {
+      selected.addStyle({ 
+        'position': 'absolute', 
+        'z-index': '99',
+        'margin': '0' // Quitar márgenes para evitar saltos raros
+      });
+    }
+
+    toast('Modo libre ACTIVADO: Toca un elemento y arrástralo donde quieras.', 'ok');
   } else {
     badge.classList.remove('on');
     btn.style.color = '';
-    ed?.setDragMode('translate');
-    toast('Modo libre desactivado', 'ok');
+    ed.setDragMode('translate'); // Volver al modo web normal
+    toast('Modo libre desactivado.', 'ok');
   }
 }
 
@@ -1000,47 +949,6 @@ document.addEventListener('keydown', e => {
 });
 
 window.onbeforeunload = () => ed ? '' : null;
-
-// ── CSS Global ────────────────────────────────────────────────────────────
-async function openGlobalCss() {
-  try {
-    const res  = await fetch('/api/editor/global-css', { headers:{ Authorization:'Bearer '+TOKEN } });
-    const data = await res.json();
-    document.getElementById('gcss-ta').value = data.css || '';
-  } catch(e) { /* continuar vacío */ }
-  document.getElementById('global-css-modal').classList.add('open');
-  setTimeout(() => document.getElementById('gcss-ta').focus(), 80);
-}
-
-function closeGlobalCss() {
-  document.getElementById('global-css-modal').classList.remove('open');
-}
-
-async function saveGlobalCss() {
-  const css = document.getElementById('gcss-ta').value;
-  const btn = document.getElementById('btn-save-gcss');
-  btn.disabled = true; btn.textContent = 'Aplicando...';
-  try {
-    const res = await fetch('/api/editor/global-css', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+TOKEN },
-      body: JSON.stringify({ css })
-    });
-    if (!res.ok) throw new Error((await res.json()).error || 'Error');
-    closeGlobalCss();
-    toast('CSS Global aplicado a todas las páginas ✓', 'ok');
-  } catch(e) {
-    toast('Error: ' + e.message, 'err');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Aplicar a todas las páginas ✓';
-  }
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && document.getElementById('global-css-modal').classList.contains('open')) {
-    closeGlobalCss();
-  }
-});
 
 // ── Start ─────────────────────────────────────────────────────────────────
 loadPage('home');
