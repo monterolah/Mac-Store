@@ -71,8 +71,7 @@ if (isProd) {
   }
 
   if (!process.env.GOOGLE_AI_API_KEY && !process.env.GEMINI_API_KEY) {
-    console.error('❌ Falta GOOGLE_AI_API_KEY o GEMINI_API_KEY en producción');
-    process.exit(1);
+    console.warn('⚠️ GOOGLE_AI_API_KEY o GEMINI_API_KEY no configuradas — el asistente IA estará deshabilitado');
   }
 }
 
