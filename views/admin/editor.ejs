@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Editor Libre — MacStore</title>
+<title>Editor Estilo Canva — MacStore</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/grapesjs@0.21.13/dist/css/grapes.min.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -245,15 +245,11 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
   </button>
   <button class="tbtn tbtn-ghost" id="btn-abs" onclick="toggleAbsMode()" title="Activar posición libre global">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>
-    Libre (Canva)
+    Modo Canva
   </button>
   <button class="tbtn tbtn-ghost" id="btn-prev" onclick="togglePreview()">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
     Vista previa
-  </button>
-  <button class="tbtn tbtn-ghost" id="btn-reload" onclick="reloadContent()" title="Recargar contenido real">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-    Recargar
   </button>
   <button class="tbtn tbtn-green" id="btn-save" onclick="saveDesign()">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -342,7 +338,6 @@ let ed = null;
 let curPage = 'home';
 let prevMode = false;
 
-// ── Panel switcher ────────────────────────────────────────────────────────
 function showPanel(name) {
   document.querySelectorAll('.rpanel').forEach(p => p.classList.remove('on'));
   document.querySelectorAll('.rtab').forEach(t => t.classList.remove('on'));
@@ -356,7 +351,6 @@ function showPanel(name) {
   if (map[name] !== undefined && tabs[map[name]]) tabs[map[name]].classList.add('on');
 }
 
-// ── Init GrapesJS ─────────────────────────────────────────────────────────
 function initEditor(bodyHtml, css) {
   if (ed) { ed.destroy(); ed = null; }
 
@@ -423,7 +417,7 @@ function initEditor(bodyHtml, css) {
                 <img src="https://via.placeholder.com/150x40/000000/FFFFFF?text=Tu+Logo+Aqui" alt="Logo" style="max-height: 40px; width: auto; display: block;" />
               </a>
 
-              <nav id="dynamic-category-nav" data-gjs-editable="false" style="display: flex; gap: 24px; font-size: 13px; font-weight: 400;">
+              <nav id="dynamic-category-nav" style="display: flex; gap: 24px; font-size: 13px; font-weight: 400;">
                 <span style="color: #86868b; font-style: italic;">[ Menú Automático ]</span>
               </nav>
 
@@ -440,14 +434,23 @@ function initEditor(bodyHtml, css) {
     }
   });
 
-  // Inyectar CSS en el canvas cuando el iframe esté listo
+  // MODO DIOS: Inyectar estilos al canvas para que nada se rompa
   ed.on('canvas:frame:load', () => {
     const doc = ed.Canvas.getDocument();
     if (doc) {
       const s = doc.createElement('style');
-      s.textContent = '* { box-sizing: border-box; } [data-gjs-type]:hover { outline: 1px dashed rgba(0,113,227,.5) !important; outline-offset: -1px; }';
+      s.textContent = `
+        * { box-sizing: border-box; } 
+        [data-gjs-type]:not(wrapper):hover { outline: 1px dashed rgba(0,113,227,.5) !important; outline-offset: -1px; }
+        body { min-height: 100vh; overflow-x: hidden; } /* Evita scroll infinito al arrastrar */
+      `;
       doc.head.appendChild(s);
     }
+  });
+
+  // Aplicar libertad después de cargar
+  ed.once('load', () => {
+    setTimeout(() => makeEverythingFree(ed.getWrapper()), 300);
   });
 
   setupEditorBehaviors();
@@ -457,29 +460,34 @@ function initEditor(bodyHtml, css) {
 function makeEverythingFree(component) {
   if (!component) return;
   
-  // Forzar redimensionamiento desde todas las esquinas y bordes
-  component.set({
-    resizable: { handles: 'tl, tc, tr, cl, cr, bl, bc, br' },
-    draggable: true,
-    droppable: true,
-    hoverable: true,
-    selectable: true,
-    copyable: true,
-    removable: true
-  });
+  const type = component.get('type');
+  const tagName = component.get('tagName')?.toLowerCase();
+  
+  // BUG FIX: No hacemos "arrastrable" el fondo principal ni las secciones grandes
+  // para que la página no colapse.
+  const isStructural = type === 'wrapper' || tagName === 'section' || tagName === 'header' || tagName === 'footer' || tagName === 'body';
+
+  if (!isStructural) {
+    // Forzar redimensionamiento desde todas las esquinas y bordes
+    component.set({
+      resizable: { handles: 'tl, tc, tr, cl, cr, bl, bc, br' },
+      draggable: true,
+      copyable: true,
+      removable: true
+    });
+  }
 
   // Si es un texto, asegurar que se puede dar doble clic para editar
-  if (component.is('text') || component.get('type') === 'text') {
+  if (component.is('text') || type === 'text') {
     component.set('editable', true);
   }
 
-  // Quitar la restricción del menú dinámico si la tuviera
-  if (component.getAttributes()['id'] === 'dynamic-category-nav') {
-    // Solo dejamos bloqueado el texto, pero el contenedor es libre
+  // Quitar la restricción del menú dinámico (bloqueamos su edición de texto, pero no su posición)
+  if (component.getAttributes()?.id === 'dynamic-category-nav') {
     component.set('editable', false); 
   }
 
-  // Aplicar parche a su barra de herramientas
+  // Aplicar parche a su barra de herramientas (agregar z-index y flotante)
   _patchToolbar(component);
 
   // Repetir para los hijos
@@ -489,21 +497,52 @@ function makeEverythingFree(component) {
 function setupEditorBehaviors() {
   if (!ed) return;
 
+  // Cada vez que agregues un bloque nuevo, ¡desbloquéalo!
+  ed.on('component:add', comp => {
+    makeEverythingFree(comp);
+  });
+
   ed.on('component:selected', comp => {
     const tag = comp.get('tagName') || comp.get('type') || 'div';
     document.getElementById('comp-info').innerHTML = `<span style="color:#56c0f2">&lt;${tag}&gt;</span>`;
     showPanel('style');
   });
 
-  // Comando "Hacer Flotante"
+  // Comandos de Z-Index (Capas) para el modo Canva
+  ed.Commands.add('ms:z-up', {
+    run(editor) {
+      const c = editor.getSelected(); if(!c) return;
+      const currentZ = parseInt(c.getStyle()['z-index'] || 0);
+      c.addStyle({ 'z-index': currentZ + 1 });
+      toast('Capa hacia adelante', 'ok');
+    }
+  });
+  ed.Commands.add('ms:z-down', {
+    run(editor) {
+      const c = editor.getSelected(); if(!c) return;
+      const currentZ = parseInt(c.getStyle()['z-index'] || 0);
+      c.addStyle({ 'z-index': currentZ - 1 });
+      toast('Capa hacia atrás', 'ok');
+    }
+  });
+
+  // Comando "Hacer Flotante Absoluto"
   ed.Commands.add('ms:make-float', {
     run(editor) {
       const c = editor.getSelected();
       if(!c || c.is('wrapper')) return;
-      c.addStyle({ 'position': 'absolute', 'z-index': '999', 'margin': '0' });
-      editor.setDragMode('absolute'); // Activar modo de arrastre de Grapes
+      
+      // BUG FIX: Si el padre no es relative, lo hacemos relative para que el hijo no salga volando
+      const parent = c.parent();
+      if (parent && parent.get('type') !== 'wrapper') {
+         parent.addStyle({'position': 'relative'});
+      }
+
+      c.addStyle({ 'position': 'absolute', 'z-index': '99', 'margin': '0' });
+      editor.setDragMode('absolute'); 
       document.getElementById('abs-badge').classList.add('on');
-      toast('Elemento despegado. Moviendo libremente (Canva).', 'ok');
+      document.getElementById('btn-abs').style.color = '#ff9f0a';
+      toast('Elemento despegado. Moviendo libremente.', 'ok');
     }
   });
 }
@@ -511,15 +550,22 @@ function setupEditorBehaviors() {
 // Parchear la barra que sale encima de los elementos seleccionados
 function _patchToolbar(comp) {
   const tb = comp.get('toolbar') || [];
-  if (tb.find(t => t.id === 'ms-float')) return; 
+  if (tb.find(t => t.id === 'ms-float')) return; // Ya tiene los botones
+  
   comp.set('toolbar', [
+    { id:'ms-z-up',
+      label:'<span style="font-size:12px">⬆️</span>',
+      attributes:{ title:'Traer al frente' }, command:'ms:z-up' },
+    { id:'ms-z-down',
+      label:'<span style="font-size:12px">⬇️</span>',
+      attributes:{ title:'Enviar al fondo' }, command:'ms:z-down' },
     { id:'ms-float',
       label:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 3L15 3M21 3L21 9M21 3L14 10M3 21L9 21M3 21L3 15M3 21L10 14"/></svg>',
-      attributes:{ title:'Hacer Flotante y Libre (Modo Canva)' }, command:'ms:make-float' },
+      attributes:{ title:'Hacer Flotante Libre' }, command:'ms:make-float' },
     { id:'ms-dup',
       label:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
       attributes:{ title:'Duplicar' }, command:'core:clone' },
-    ...tb.filter(t => t.command === 'core:component-delete') // Dejar solo el de borrar
+    ...tb.filter(t => t.command === 'core:component-delete') // Dejar el bote de basura nativo
   ]);
 }
 
@@ -560,7 +606,7 @@ async function saveDesign() {
     const css      = ed.getCss();
     const gjsData  = JSON.stringify(ed.getProjectData());
     
-    // Buscar Header
+    // Buscar Header para separarlo
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = bodyHtml;
     const headerElement = tempDiv.querySelector('#mac-global-header');
@@ -577,22 +623,26 @@ async function saveDesign() {
     if (!res.ok) throw new Error('Error guardando en BD');
     toast('Diseño guardado ✓', 'ok');
   } catch(e) { toast('Error: ' + e.message, 'err'); } 
-  finally { btn.disabled = false; btn.textContent = 'Guardar'; }
+  finally { 
+    btn.disabled = false; 
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Guardar';
+  }
 }
 
 // ── Botón Global de Modo Libre ───────────────────────────────────────────
 let _absMode = false;
 function toggleAbsMode() {
   _absMode = !_absMode;
+  const badge = document.getElementById('abs-badge');
+  const btn   = document.getElementById('btn-abs');
   if (_absMode) {
-    makeEverythingFree(ed.getWrapper());
-    document.getElementById('abs-badge').classList.add('on');
-    document.getElementById('btn-abs').style.color = '#ff9f0a';
+    badge.classList.add('on');
+    btn.style.color = '#ff9f0a';
     ed.setDragMode('absolute');
-    toast('Modo Canva activado — arrastra cualquier elemento libremente.', 'ok');
+    toast('Modo Canva Global. Puedes arrastrar cualquier cosa a donde quieras.', 'ok');
   } else {
-    document.getElementById('abs-badge').classList.remove('on');
-    document.getElementById('btn-abs').style.color = '';
+    badge.classList.remove('on');
+    btn.style.color = '';
     ed.setDragMode('translate');
     toast('Modo estándar restaurado.', 'ok');
   }
@@ -611,8 +661,6 @@ function toast(msg, type='ok') {
   clearTimeout(_tt); _tt = setTimeout(()=>el.className='',3000);
 }
 
-
-// ── Devices ──────────────────────────────────────────────────────────────
 function setDev(name) {
   if (!ed) return;
   ed.setDevice({desktop:'Desktop',tablet:'Tablet',mobile:'Mobile'}[name]);
@@ -620,7 +668,6 @@ function setDev(name) {
   document.getElementById('d-'+name)?.classList.add('on');
 }
 
-// ── Duplicar / Eliminar ───────────────────────────────────────────────────
 function dupSelected() {
   if (!ed) return;
   const c = ed.getSelected();
@@ -639,9 +686,7 @@ function delSelected() {
   toast('Eliminado', 'ok');
 }
 
-// ── Code editor tabs ──────────────────────────────────────────────────────
 let _codeTab = 'html';
-
 function switchCodeTab(tab) {
   _codeTab = tab;
   document.getElementById('ctab-html').classList.toggle('on', tab === 'html');
@@ -649,11 +694,9 @@ function switchCodeTab(tab) {
   document.getElementById('code-ta').value = ed ? (tab === 'html' ? ed.getHtml() : ed.getCss()) : '';
 }
 
-// ── Keyboard shortcuts ────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   const tag = document.activeElement?.tagName?.toLowerCase();
-  const inInput = tag === 'input' || tag === 'textarea' || tag === 'select'
-                  || document.activeElement?.isContentEditable;
+  const inInput = tag === 'input' || tag === 'textarea' || tag === 'select' || document.activeElement?.isContentEditable;
 
   if ((e.metaKey||e.ctrlKey) && e.key==='s') { e.preventDefault(); saveDesign(); return; }
   if ((e.metaKey||e.ctrlKey) && e.key==='z' && !e.shiftKey) { e.preventDefault(); ed?.UndoManager?.undo(); return; }
@@ -680,7 +723,7 @@ document.addEventListener('keydown', e => {
 
 window.onbeforeunload = () => ed ? '' : null;
 
-// ── Start ────────────────────────────────────────────────────────────────
+// Start
 loadPage('home');
 </script>
 </body>
