@@ -406,6 +406,9 @@ function initEditor(bodyHtml, css) {
         ]}
       ]
     },
+    layerManager:  { appendTo: '#lm-wrap' },
+    traitManager:  { appendTo: '#tm-wrap' },
+    panels:        { defaults: [] },
     blockManager: {
       appendTo: '#bm-wrap',
       blocks: [
@@ -437,18 +440,14 @@ function initEditor(bodyHtml, css) {
     }
   });
 
-  // MODO DIOS: Romper todas las reglas de restricción
-  ed.once('load', () => {
-    // 1. Inyectar CSS para que todo tenga bordes seleccionables
+  // Inyectar CSS en el canvas cuando el iframe esté listo
+  ed.on('canvas:frame:load', () => {
     const doc = ed.Canvas.getDocument();
     if (doc) {
       const s = doc.createElement('style');
       s.textContent = '* { box-sizing: border-box; } [data-gjs-type]:hover { outline: 1px dashed rgba(0,113,227,.5) !important; outline-offset: -1px; }';
       doc.head.appendChild(s);
     }
-
-    // 2. Aplicar libertad a TODO lo que ya existe
-    makeEverythingFree(ed.getWrapper());
   });
 
   setupEditorBehaviors();
