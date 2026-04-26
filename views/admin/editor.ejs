@@ -489,11 +489,6 @@ function makeEverythingFree(component) {
 function setupEditorBehaviors() {
   if (!ed) return;
 
-  // Cada vez que arrastres algo nuevo, ¡desbloquéalo!
-  ed.on('component:add', comp => {
-    makeEverythingFree(comp);
-  });
-
   ed.on('component:selected', comp => {
     const tag = comp.get('tagName') || comp.get('type') || 'div';
     document.getElementById('comp-info').innerHTML = `<span style="color:#56c0f2">&lt;${tag}&gt;</span>`;
@@ -547,8 +542,6 @@ async function loadPage(pageName) {
     initEditor(bodyFromHtml(html), saved?.css || '');
     if (saved && saved.gjsData && saved.gjsData !== '{}') {
       ed.loadProjectData(JSON.parse(saved.gjsData));
-      // Re-aplicar libertad a los datos cargados
-      setTimeout(() => makeEverythingFree(ed.getWrapper()), 500);
     }
   } catch(e) {
     toast('Error: ' + e.message, 'err');
@@ -592,11 +585,14 @@ let _absMode = false;
 function toggleAbsMode() {
   _absMode = !_absMode;
   if (_absMode) {
+    makeEverythingFree(ed.getWrapper());
     document.getElementById('abs-badge').classList.add('on');
+    document.getElementById('btn-abs').style.color = '#ff9f0a';
     ed.setDragMode('absolute');
-    toast('Modo Canva Global. Puedes arrastrar cosas a posiciones libres.', 'ok');
+    toast('Modo Canva activado — arrastra cualquier elemento libremente.', 'ok');
   } else {
     document.getElementById('abs-badge').classList.remove('on');
+    document.getElementById('btn-abs').style.color = '';
     ed.setDragMode('translate');
     toast('Modo estándar restaurado.', 'ok');
   }
