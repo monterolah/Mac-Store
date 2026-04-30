@@ -24,7 +24,7 @@ const {
   getAllPaymentMethods, insertPaymentMethod, updatePaymentMethod, deletePaymentMethod,
   getAllQuotations, getQuotationById, insertQuotation, deleteQuotation,
   getAllInventoryEntries, getInventoryEntryById, updateInventoryEntry,
-  getAdminByEmail, getPageDesign, savePageDesign, getAllPageDesigns,
+  getAdminByEmail, getPageDesign, savePageDesign, getAllPageDesigns, clearPageDesignHtml,
   dbGet,
 } = require('../db/sqlite');
 
@@ -374,7 +374,7 @@ router.put('/products/:id', requireAdminAPI, upload.single('image'), async (req,
 });
 
 router.delete('/products/:id', requireAdminAPI, (req, res) => {
-  try { deleteProduct(req.params.id); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
+  try { deleteProduct(req.params.id); clearPageDesignHtml(); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.post('/products/bulk-delete', requireAdminAPI, (req, res) => {
@@ -382,6 +382,7 @@ router.post('/products/bulk-delete', requireAdminAPI, (req, res) => {
     const ids = Array.isArray(req.body.ids) ? req.body.ids.filter(Boolean) : [];
     if (!ids.length) return res.status(400).json({ error:'No se recibieron productos para eliminar' });
     ids.forEach(id => deleteProduct(id));
+    clearPageDesignHtml();
     res.json({ ok:true, affected:ids.length });
   } catch(e) { res.status(500).json({ error:e.message }); }
 });
@@ -428,6 +429,7 @@ router.post('/categories', requireAdminAPI, upload.single('image'), async (req, 
     if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'categories');
     const ref = insertCategory({ name, slug:slugify(name), description:description||'', sort_order:parseInt(sort_order)||0, bg_color:bg_color||'', image_url });
     clearCache();
+    clearPageDesignHtml();
     res.status(201).json({ id:ref.id });
   } catch(e) { res.status(500).json({ error:e.message }); }
 });
@@ -447,12 +449,13 @@ router.put('/categories/:id', requireAdminAPI, upload.single('image'), async (re
       active: active!==undefined?(active!=='0'?1:0):(ex.active?1:0),
     });
     clearCache();
+    clearPageDesignHtml();
     res.json({ ok:true });
   } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.delete('/categories/:id', requireAdminAPI, (req, res) => {
-  try { deleteCategory(req.params.id); clearCache(); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
+  try { deleteCategory(req.params.id); clearCache(); clearPageDesignHtml(); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 // ── BANNERS ───────────────────────────────────────────────────────────────
