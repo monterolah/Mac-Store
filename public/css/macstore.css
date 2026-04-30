@@ -208,17 +208,27 @@ button { font-family: var(--font); cursor: pointer; }
    ========================================================================== */
 footer { background: #f5f5f7; border-top: 1px solid rgba(0,0,0,0.05); padding: 80px 0 40px; color: var(--black); }
 .footer-inner { max-width: 1024px; margin: 0 auto; padding: 0 24px; }
-.footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 80px; }
-.footer-brand { font-size: 21px; font-weight: 600; letter-spacing: -0.03em; margin-bottom: 16px; color: var(--black); }
+.footer-grid { display: grid; grid-template-columns: 260px 1fr; gap: 56px; margin-bottom: 56px; }
+.footer-cols-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 32px; }
+.footer-logo { margin-bottom: 14px; }
+.footer-brand { font-size: 21px; font-weight: 600; letter-spacing: -0.03em; margin-bottom: 14px; color: var(--black); }
 .footer-brand span { color: var(--blue); }
-.footer-tagline { font-size: 13px; color: var(--g5); line-height: 1.6; margin-bottom: 24px; }
+.footer-tagline { font-size: 13px; color: var(--g5); line-height: 1.6; margin-bottom: 18px; }
+.footer-info-block { margin-bottom: 16px; }
+.footer-info-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--g4); margin-bottom: 5px; }
+.footer-info-text { font-size: 13px; color: var(--g5); line-height: 1.55; }
+.footer-contact-link { display: block; font-size: 13px; color: var(--g5); margin-bottom: 3px; transition: color 0.2s; }
+.footer-contact-link:hover { color: var(--black); }
+.footer-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+.footer-wa-btn { display: inline-flex; align-items: center; gap: 6px; background: #25d366; color: #fff; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; white-space: nowrap; transition: opacity 0.2s; }
+.footer-wa-btn:hover { opacity: 0.88; color: #fff; }
 .footer-col h4 { font-size: 12px; font-weight: 600; margin-bottom: 20px; color: var(--black); letter-spacing: 0.04em; text-transform: uppercase; }
 .footer-col a { display: block; font-size: 13px; color: var(--g5); margin-bottom: 14px; transition: color 0.2s; font-weight: 400; }
-.footer-col a:hover { color: var(--black); text-decoration: underline; }
+.footer-col a:hover { color: var(--black); }
 .footer-bottom { border-top: 1px solid rgba(0,0,0,0.08); padding-top: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--g4); }
-.footer-social { display: flex; gap: 16px; }
-.footer-social a { color: var(--g4); font-size: 18px; transition: color 0.2s; display: flex; align-items: center; }
-.footer-social a:hover { color: var(--black); }
+.footer-social { display: flex; gap: 14px; align-items: center; }
+.footer-social a { color: var(--g4); transition: color 0.25s, transform 0.25s; display: flex; align-items: center; }
+.footer-social a:hover { color: var(--black); transform: translateY(-2px); }
 
 .whatsapp-fab { position: fixed; bottom: 32px; right: 32px; width: 56px; height: 56px; border-radius: 50%; background: #25d366; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(37,211,102,0.25); z-index: 200; transition: transform 0.4s var(--ease), box-shadow 0.4s var(--ease); animation: fabIn 0.8s var(--ease) 1s both; }
 @keyframes fabIn { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
@@ -230,7 +240,8 @@ footer { background: #f5f5f7; border-top: 1px solid rgba(0,0,0,0.05); padding: 8
 @media (max-width: 900px) {
   .ms-catalog-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
   .ms-card-img { height: 200px; }
-  .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
+  .footer-grid { grid-template-columns: 1fr; gap: 40px; }
+  .footer-cols-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
   .detail-wrap { padding: 64px 24px; }
   .detail-grid { gap: 64px; grid-template-columns: 1fr; }
   .detail-img-box { max-height: 500px; }
@@ -268,7 +279,7 @@ footer { background: #f5f5f7; border-top: 1px solid rgba(0,0,0,0.05); padding: 8
   .ms-support-section { padding: 80px 24px; }
   .ms-support-grid { grid-template-columns: 1fr; gap: 20px; }
   .ms-support-card { padding: 40px 24px; border-radius: 20px; }
-  .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 40px; }
+  .footer-grid { grid-template-columns: 1fr; gap: 36px; margin-bottom: 40px; }
   .footer-bottom { flex-direction: column; align-items: flex-start; gap: 16px; }
   .detail-wrap { padding: 48px 24px 80px; }
   .detail-img-box { padding: 40px; max-height: 400px; }
