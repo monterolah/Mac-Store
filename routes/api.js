@@ -427,6 +427,7 @@ router.post('/categories', requireAdminAPI, upload.single('image'), async (req, 
     let image_url = req.body.image_url || '';
     if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'categories');
     const ref = insertCategory({ name, slug:slugify(name), description:description||'', sort_order:parseInt(sort_order)||0, bg_color:bg_color||'', image_url });
+    clearCache();
     res.status(201).json({ id:ref.id });
   } catch(e) { res.status(500).json({ error:e.message }); }
 });
@@ -436,7 +437,7 @@ router.put('/categories/:id', requireAdminAPI, upload.single('image'), async (re
     const ex = dbGet('SELECT * FROM categories WHERE id = ?', [req.params.id]);
     if (!ex) return res.status(404).json({ error:'No encontrado' });
     const { name, description, sort_order, active, bg_color, share_whatsapp } = req.body;
-    let image_url = ex.image_url; // default: keep existing image
+    let image_url = ex.image_url;
     if (req.file) image_url = await uploadToStorage(req.file.buffer, req.file.originalname, 'categories');
     else if (req.body.image_url && req.body.image_url.trim()) image_url = req.body.image_url.trim();
     updateCategory(req.params.id, {
@@ -445,12 +446,13 @@ router.put('/categories/:id', requireAdminAPI, upload.single('image'), async (re
       share_whatsapp: share_whatsapp!==undefined?(share_whatsapp!=='0'?1:0):(ex.share_whatsapp?1:0),
       active: active!==undefined?(active!=='0'?1:0):(ex.active?1:0),
     });
+    clearCache();
     res.json({ ok:true });
   } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 router.delete('/categories/:id', requireAdminAPI, (req, res) => {
-  try { deleteCategory(req.params.id); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
+  try { deleteCategory(req.params.id); clearCache(); res.json({ ok:true }); } catch(e) { res.status(500).json({ error:e.message }); }
 });
 
 // ── BANNERS ───────────────────────────────────────────────────────────────

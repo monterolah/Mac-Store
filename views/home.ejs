@@ -83,7 +83,7 @@ const prodByCat = {};
   if(!cat && !prod) return;
   const dark    = i % 2 !== 0;
   const reverse = i % 2 !== 0;
-  const showcaseImg = (prod && prod.image_url) ? prod.image_url : (cat && cat.image_url) ? cat.image_url : null;
+  const showcaseImg = (cat && cat.image_url) ? cat.image_url : (prod && prod.image_url) ? prod.image_url : null;
 %>
 <section class="ms-showcase <%=dark?'ms-dark':'ms-light'%>" data-reveal data-delay="<%=i*60%>" style="<%=cat&&cat.bg_color&&!dark?'background:'+cat.bg_color:''%>">
   <div class="ms-showcase-inner ms-showcase-horiz <%=reverse?'ms-showcase-reverse':''%>">
