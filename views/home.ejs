@@ -69,7 +69,7 @@ const heroProduct = featured && featured[0];
 
 <!-- ══ SHOWCASES ══ -->
 <%
-// Siempre muestra todas las categorías activas del admin (editor y tienda usan la misma fuente)
+// Siempre muestra todas las categorías activas del admin
 const slugOrder = (categories||[]).map(c => c.slug);
 const catMap = {};
 (categories||[]).forEach(c => catMap[c.slug] = c);
@@ -83,30 +83,32 @@ const prodByCat = {};
   if(!cat && !prod) return;
   const dark    = i % 2 !== 0;
   const reverse = i % 2 !== 0;
-  const showcaseImg = (cat && cat.image_url) ? cat.image_url : (prod && prod.image_url) ? prod.image_url : null;
+  
+  // AQUÍ ESTÁ EL TRUCO DE LA IMAGEN: 
+  // Buscamos 'image_url', pero si en tu base de datos se llama 'image' o 'img', también la atrapará.
+  const catImg = cat ? (cat.image_url || cat.image || cat.img) : null;
+  const prodImg = prod ? (prod.image_url || prod.image) : null;
+  
+  const showcaseImg = catImg ? catImg : prodImg;
 %>
 <section class="ms-showcase <%=dark?'ms-dark':'ms-light'%>" data-reveal data-delay="<%=i*60%>" style="<%=cat&&cat.bg_color&&!dark?'background:'+cat.bg_color:''%>">
   <div class="ms-showcase-inner ms-showcase-horiz <%=reverse?'ms-showcase-reverse':''%>">
 
     <!-- TEXTO -->
     <div class="ms-showcase-text">
-      <% if(prod){ %><p class="ms-eyebrow" style="color:<%=dark?'rgba(255,255,255,.45)':'#86868b'%>"><%=cat?cat.name:''%></p><% } %>
-      <h2 class="ms-showcase-title" style="color:<%=dark?'#fff':'#1d1d1f'%>"><%=prod?prod.name:(cat?cat.name:'')%></h2>
-      <p class="ms-showcase-desc" style="color:<%=dark?'rgba(255,255,255,.65)':'#515154'%>"><%=prod?prod.description:''%></p>
+      <!-- Ahora forzamos a que el título y descripción sean SIEMPRE de la categoría -->
+      <h2 class="ms-showcase-title" style="color:<%=dark?'#fff':'#1d1d1f'%>"><%=cat ? cat.name : (prod ? prod.name : '')%></h2>
+      <p class="ms-showcase-desc" style="color:<%=dark?'rgba(255,255,255,.65)':'#515154'%>"><%=cat && cat.description ? cat.description : (prod ? prod.description : '')%></p>
+      
       <div class="ms-showcase-btns" style="justify-content:flex-start">
-        <% if(prod){ %>
-        <a href="/producto/<%=prod.slug%>" class="ms-btn-primary" style="<%=dark?'background:#fff;color:#1d1d1f':''%>">Más información</a>
-        <a href="/categoria/<%=slug%>" class="ms-btn-outline" style="<%=dark?'border-color:rgba(255,255,255,.4);color:#fff':''%>">Ver modelos</a>
-        <% } else { %>
-        <a href="/categoria/<%=slug%>" class="ms-btn-primary" style="<%=dark?'background:#fff;color:#1d1d1f':''%>">Ver <%=cat?cat.name:slug%></a>
-        <% } %>
+        <a href="/categoria/<%=slug%>" class="ms-btn-primary" style="<%=dark?'background:#fff;color:#1d1d1f':''%>">Ver modelos de <%=cat ? cat.name : slug%></a>
       </div>
     </div>
 
     <!-- IMAGEN -->
     <% if(showcaseImg){ %>
     <div class="ms-showcase-img">
-      <img src="<%=showcaseImg%>" alt="<%=prod?prod.name:(cat?cat.name:'')%>" loading="lazy" onerror="this.parentNode.style.display='none'">
+      <img src="<%=showcaseImg%>" alt="<%=cat ? cat.name : ''%>" loading="lazy" onerror="this.parentNode.style.display='none'">
     </div>
     <% } %>
 
