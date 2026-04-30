@@ -363,7 +363,8 @@ function initEditor(bodyHtml, css) {
     allowScripts: 1,
     components: bodyHtml || '<div style="padding:40px;text-align:center;color:#999">Cargando contenido...</div>',
     style: css || '',
-    canvas: { styles: ['/css/macstore.css'] },
+    // ESTA LÍNEA AÑADE EL CACHE-BUSTER PARA OBLIGAR AL EDITOR A CARGAR EL CSS NUEVO
+    canvas: { styles: ['/css/macstore.css?v=' + Date.now()] },
     deviceManager: {
       devices: [
         { name:'Desktop', width:'' },
