@@ -38,6 +38,11 @@ const { formatPrice }  = require('./middleware/helpers');
 const app  = express();
 const adminApp = express();
 const adminApiApp = express();
+// Trim all env vars to avoid leading/trailing space issues from Railway dashboard
+['NODE_ENV','JWT_SECRET','SESSION_SECRET','ADMIN_EMAIL','ADMIN_PASSWORD',
+ 'CLOUDINARY_API_KEY','CLOUDINARY_API_SECRET','CLOUDINARY_CLOUD_NAME','DB_PATH'].forEach(k => {
+  if (process.env[k]) process.env[k] = process.env[k].trim();
+});
 const isProd = process.env.NODE_ENV === 'production';
 if (isProd) {
   app.set('trust proxy', 1);

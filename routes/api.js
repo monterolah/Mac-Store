@@ -784,6 +784,10 @@ router.get('/editor/design', requireAdminAPI, (req, res) => {
 function stripBadHeroCss(input) {
   if (!input) return input;
   const badSelectors = [
+    // GrapesJS defaults acumulados en cada guardado
+    /\*\s*\{[^}]*box-sizing\s*:\s*border-box[^}]*\}/g,
+    /body\s*\{[^}]*margin(?:-top|-right|-bottom|-left)?\s*:\s*0(?:px)?[^}]*\}/g,
+    // Hero sizes fijados por el editor
     /\.?ms-hero-wrap\s*\{[^}]*(?:height|width)\s*:\s*\d+px[^}]*\}/g,
     /\.?ms-hero-overlay\s*\{[^}]*(height|width)\s*:\s*\d+px[^}]*\}/g,
     /\.?ms-hero-bg\s*\{[^}]*(height|width|color)\s*:[^}]*(?:\d+px|rgb\(1[0-9]{2})[^}]*\}/g,
@@ -792,7 +796,7 @@ function stripBadHeroCss(input) {
   ];
   let out = input;
   for (const re of badSelectors) out = out.replace(re, '');
-  return out;
+  return out.trim();
 }
 
 router.post('/editor/save', requireAdminAPI, (req, res) => {
