@@ -61,9 +61,9 @@ button { font-family: var(--font); cursor: pointer; }
 /* ==========================================================================
    3. HERO SECTION
    ========================================================================== */
-.ms-hero-wrap { position: relative; height: 100vh; min-height: 600px; overflow: hidden; background: #000; }
+.ms-hero-wrap { position: relative; height: 70vh; min-height: 480px; overflow: hidden; background: #000; }
 .ms-slide { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; opacity: 0; transition: opacity 1.4s ease; pointer-events: none; }
-.ms-slide.active { opacity: 1; pointer-events: auto; position: relative; height: 100vh; min-height: 600px; }
+.ms-slide.active { opacity: 1; pointer-events: auto; position: relative; height: 70vh; min-height: 480px; }
 .ms-hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; z-index: 0; transform: scale(1.05); transition: transform 6s var(--ease); }
 .ms-slide.active .ms-hero-bg { transform: scale(1); }
 .ms-hero-overlay { position: absolute; inset: 0; z-index: 1; background: linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.45) 100%); }
@@ -242,7 +242,7 @@ footer { background: #f5f5f7; border-top: 1px solid rgba(0,0,0,0.05); padding: 8
   .hamburger { display: block; }
   .nav-inner { padding: 0 24px; }
   .nav-logo img { height: 20px; }
-  .ms-hero-wrap { height: 100svh; min-height: 500px; }
+  .ms-hero-wrap { height: 70svh; min-height: 420px; }
   .ms-hero-content { padding: 0 24px; }
   .ms-hero-btns { gap: 16px; }
   .ms-btn-ghost, .ms-btn-outline, .ms-btn-primary { padding: 14px 24px; font-size: 15px; width: 100%; max-width: 320px; justify-content: center; }
